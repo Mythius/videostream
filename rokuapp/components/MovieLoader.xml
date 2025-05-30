@@ -1,0 +1,7 @@
+<component name="MovieLoader" extends="Task">
+    <script type="text/brightscript" uri="pkg:/components/MovieLoader.brs" />
+    <interface>
+        <field id="url" type="string" />
+        <field id="content" type="array" />
+    </interface>
+</component>
