@@ -1,5 +1,6 @@
 /* CONFIG */
 const url_name = "http://192.168.0.153";
+const port = 80;
 
 /* END CONFIG */
 
@@ -35,7 +36,6 @@ class client {
   }
 }
 
-const port = 80;
 const mainfolder = __dirname + "/";
 
 app.use(express.static(mainfolder + "site/"));
@@ -88,6 +88,7 @@ app.get("/", (req, res) => {
     // Filter out non-files and hidden files if needed
     const links = files
       .filter((f) => !f.startsWith("."))
+      .filter((f) => f.match(".mp4"))
       .sort()
       .map((f) => {
         const name = f.replace(/\.[^/.]+$/, ""); // Remove extension
@@ -168,7 +169,7 @@ app.get("/:video", (req, res) => {
 });
 
 http.listen(port, () => {
-  console.log("Serving Port: " + port);
+  console.log(`Serving http://localhost${port == 80 ? "" : `:${port}`}`);
 });
 
 io.on("connection", (socket) => {
