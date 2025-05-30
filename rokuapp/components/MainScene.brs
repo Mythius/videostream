@@ -1,4 +1,8 @@
 sub init()
+    'CONFIGURE THIS
+    URL = "http://192.168.0.153"
+    'END CONFIG
+
     print "==> MainScene: init()"
 
     m.grid = m.top.findNode("posterGrid")
@@ -11,7 +15,7 @@ sub init()
 
     m.loader = m.top.findNode("loader")
     m.loader.observeField("content", "onContentLoaded")
-    m.loader.url = "http://192.168.0.153/json"
+    m.loader.url = URL + "/json"
 
     m.top.setFocus(true)
     m.grid.setFocus(true)
