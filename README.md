@@ -11,3 +11,7 @@ Update your URL in server.js and rokuapp/components/MainScene.brs, re zip all co
 
 See https://developer.roku.com/docs/developer-program/getting-started/developer-setup.md
 for instructions to set up your own roku app.
+
+If you are starting your own DVD mp4 collection I strongly recommend 
+- MakeMKV https://www.makemkv.com/
+- ffmpeg `winget install ffmpeg` (windows) `sudo apt install ffmpeg` (linux)

@@ -132,6 +132,7 @@ app.get("/json", (req, res) => {
     // Filter out non-files and hidden files if needed
     const links = files
       .filter((f) => !f.startsWith("."))
+      .filter((f) => f.match(".mp4"))
       .sort()
       .map((e) => {
         return {
