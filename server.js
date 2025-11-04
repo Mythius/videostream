@@ -1,5 +1,4 @@
 /* CONFIG */
-const url_name = "http://192.168.0.153";
 const port = 80;
 
 /* END CONFIG */
@@ -11,6 +10,36 @@ var io = require("socket.io")(http);
 var fs = require("fs");
 const path = require("path");
 const cors = require("cors");
+const os = require("os");
+
+// Function to get local IPv4 address
+function getLocalIPv4() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Skip internal (loopback) and non-IPv4 addresses
+      if (iface.family === "IPv4" && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return "localhost"; // Fallback
+}
+
+// Get the local IP and create the URL
+const localIP = getLocalIPv4();
+const url_name = `http://${localIP}`;
+
+// Write to config.json
+const configPath = path.join(__dirname, "config.json");
+const config = { url: url_name };
+
+try {
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  console.log(`Config written to ${configPath}: ${url_name}`);
+} catch (err) {
+  console.error("Error writing config file:", err);
+}
 app.use(
   cors({
     origin: "*",
