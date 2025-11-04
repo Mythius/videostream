@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MatthiasTV - Browse Movies</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            padding: 20px 40px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 5px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 40px 40px 100px;
+        }
+
+        .movies-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        @media (max-width: 1400px) {
+            .movies-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 900px) {
+            .movies-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .movies-grid {
+                grid-template-columns: 1fr;
+            }
+            .container {
+                padding: 20px;
+            }
+        }
+
+        .movie-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+
+        .movie-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.4);
+            border-color: rgba(102, 126, 234, 0.6);
+        }
+
+        .movie-poster {
+            width: 100%;
+            aspect-ratio: 2/3;
+            object-fit: cover;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .movie-info {
+            padding: 15px;
+        }
+
+        .movie-title {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: white;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 1.2em;
+        }
+
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .no-movies {
+            text-align: center;
+            padding: 100px 20px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .no-movies h2 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎬 MatthiasTV</h1>
+        <p>Browse and stream your favorite movies</p>
+    </div>
+
+    <div class="container">
+        <div class="movies-grid" id="moviesGrid">
+            <!-- Movies will be injected here -->
+            __MOVIES_PLACEHOLDER__
+        </div>
+        <div class="loading" id="loadingIndicator" style="display: none;">
+            <div class="loader"></div>
+            <p>Loading more movies...</p>
+        </div>
+    </div>
+
+    <script>
+        const moviesData = __MOVIES_DATA__;
+        let displayedMovies = [];
+        let currentIndex = 0;
+        const MOVIES_PER_PAGE = 16;
+        const enableInfiniteScroll = moviesData.length > 15;
+
+        function createMovieCard(movie) {
+            return `
+                <div class="movie-card" onclick="window.location.href='${movie.url}'">
+                    <img src="${movie.thumbnail}" alt="${movie.title}" class="movie-poster" onerror="this.src='/clapboard.jpg'">
+                    <div class="movie-info">
+                        <div class="movie-title">${movie.title}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function loadMoreMovies() {
+            if (!enableInfiniteScroll) return;
+
+            const grid = document.getElementById('moviesGrid');
+            const fragment = document.createDocumentFragment();
+            const tempDiv = document.createElement('div');
+
+            for (let i = 0; i < MOVIES_PER_PAGE; i++) {
+                const movie = moviesData[currentIndex % moviesData.length];
+                tempDiv.innerHTML = createMovieCard(movie);
+                grid.appendChild(tempDiv.firstElementChild);
+                currentIndex++;
+            }
+        }
+
+        function handleScroll() {
+            if (!enableInfiniteScroll) return;
+
+            const scrollPosition = window.innerHeight + window.scrollY;
+            const threshold = document.documentElement.scrollHeight - 500;
+
+            if (scrollPosition >= threshold) {
+                const loadingIndicator = document.getElementById('loadingIndicator');
+                loadingIndicator.style.display = 'block';
+
+                setTimeout(() => {
+                    loadMoreMovies();
+                    loadingIndicator.style.display = 'none';
+                }, 500);
+            }
+        }
+
+        // Initialize
+        if (enableInfiniteScroll) {
+            currentIndex = MOVIES_PER_PAGE;
+            window.addEventListener('scroll', handleScroll);
+        }
+
+        // Handle empty state
+        if (moviesData.length === 0) {
+            document.getElementById('moviesGrid').innerHTML = `
+                <div class="no-movies" style="grid-column: 1 / -1;">
+                    <h2>No Movies Found</h2>
+                    <p>Add some videos to your library to get started</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

@@ -293,6 +293,77 @@
             background: #5568d3;
         }
 
+        .settings-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        .settings-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .directory-input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .directory-input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-family: monospace;
+        }
+
+        .directory-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .browse-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .browse-btn:hover {
+            background: #5568d3;
+        }
+
+        .save-btn {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .save-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .current-directory {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+            font-family: monospace;
+            word-break: break-all;
+        }
+
         .status-message {
             margin-top: 10px;
             padding: 10px;
@@ -343,6 +414,16 @@
                     <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
                 </div>
                 <div class="status-message" id="statusMessage"></div>
+
+                <div class="settings-section">
+                    <h3>⚙️ Video Directory Settings</h3>
+                    <div class="directory-input-group">
+                        <input type="text" id="videoDirectoryInput" class="directory-input" placeholder="/path/to/videos">
+                        <button class="browse-btn" onclick="browseDirectory()">📁 Browse</button>
+                        <button class="save-btn" onclick="saveVideoDirectory()">💾 Save</button>
+                    </div>
+                    <div class="current-directory" id="currentDirectory">Current: Loading...</div>
+                </div>
             </div>
         </div>
 
@@ -432,6 +513,91 @@
             } catch (error) {
                 console.error('Error getting disk usage:', error);
                 return { total: 0, used: 0 };
+            }
+        }
+
+        async function loadVideoDirectory() {
+            try {
+                const response = await fetch('http://localhost:3000/config');
+                const config = await response.json();
+
+                const directoryInput = document.getElementById('videoDirectoryInput');
+                const currentDirectory = document.getElementById('currentDirectory');
+
+                directoryInput.value = config.videoDirectory;
+                currentDirectory.textContent = `Current: ${config.videoDirectory}`;
+            } catch (error) {
+                console.error('Error loading video directory:', error);
+            }
+        }
+
+        async function browseDirectory() {
+            // Check if we have the selectDirectory function (from preload)
+            if (typeof window.selectDirectory === 'function') {
+                try {
+                    const selectedPath = await window.selectDirectory();
+                    if (selectedPath) {
+                        document.getElementById('videoDirectoryInput').value = selectedPath;
+                    }
+                } catch (error) {
+                    console.error('Error selecting directory:', error);
+                    alert('Error selecting directory: ' + error.message);
+                }
+            } else {
+                // Fallback to prompt if IPC is not available
+                const directoryPath = prompt('Enter the full path to your videos directory:');
+                if (directoryPath) {
+                    document.getElementById('videoDirectoryInput').value = directoryPath;
+                }
+            }
+        }
+
+        async function saveVideoDirectory() {
+            const directoryInput = document.getElementById('videoDirectoryInput');
+            const statusMessage = document.getElementById('statusMessage');
+            const newDirectory = directoryInput.value.trim();
+
+            if (!newDirectory) {
+                statusMessage.className = 'status-message error';
+                statusMessage.style.display = 'block';
+                statusMessage.textContent = '❌ Please enter a directory path';
+                setTimeout(() => { statusMessage.style.display = 'none'; }, 3000);
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:3000/update-video-directory', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ directory: newDirectory })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusMessage.className = 'status-message success';
+                    statusMessage.style.display = 'block';
+                    statusMessage.textContent = `✅ Video directory updated to: ${data.directory}`;
+
+                    document.getElementById('currentDirectory').textContent = `Current: ${data.directory}`;
+
+                    // Reload video list
+                    setTimeout(() => {
+                        loadData();
+                        statusMessage.style.display = 'none';
+                    }, 2000);
+                } else {
+                    statusMessage.className = 'status-message error';
+                    statusMessage.style.display = 'block';
+                    statusMessage.textContent = `❌ Error: ${data.error}`;
+                    setTimeout(() => { statusMessage.style.display = 'none'; }, 5000);
+                }
+            } catch (error) {
+                console.error('Error updating directory:', error);
+                statusMessage.className = 'status-message error';
+                statusMessage.style.display = 'block';
+                statusMessage.textContent = `❌ Error: ${error.message}`;
+                setTimeout(() => { statusMessage.style.display = 'none'; }, 5000);
             }
         }
 
@@ -757,7 +923,10 @@
         }
 
         // Load data on page load
-        window.addEventListener('DOMContentLoaded', loadData);
+        window.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            loadVideoDirectory();
+        });
 
         // Auto-refresh every 30 seconds
         setInterval(loadData, 30000);

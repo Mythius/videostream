@@ -2,7 +2,7 @@
 // "start": ".\\node_modules\\electron\\dist\\electron.exe ."
 // npx electron-builder
 
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 
 const name = "";
@@ -58,7 +58,8 @@ function createWindow () {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      enableRemoteModule: true
+      enableRemoteModule: true,
+      preload: path.join(__dirname, 'preload.js')
     },
     icon: path.join(__dirname, 'site', 'icon.png')
   })
@@ -76,6 +77,20 @@ function createWindow () {
   // Open DevTools for debugging (temporarily enabled for packaged app too)
   // win.webContents.openDevTools();
 }
+
+// IPC handler for directory selection
+ipcMain.handle('select-directory', async (event) => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    title: 'Select Video Directory'
+  });
+
+  if (result.canceled) {
+    return null;
+  } else {
+    return result.filePaths[0];
+  }
+});
 
 app.on('ready', () => {
   // Start the server first
