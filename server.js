@@ -58,8 +58,7 @@ function authMiddleware(req, res, next) {
     // Allow access to static files (like CSS, JS, video files)
     if (
         // req.path.startsWith('/videos/') ||
-        req.path.startsWith('/socket.io/') ||
-        req.path.startsWith('/favicon.ico')
+        req.path !== '/' && req.path !== '/login'
     ) {
         return next();
     }
@@ -100,7 +99,7 @@ function authMiddleware(req, res, next) {
     </body></html>`);
 }
 
-// app.use(authMiddleware);
+app.use(authMiddleware);
 
 app.use(express.static(mainfolder+'site/'));
 
