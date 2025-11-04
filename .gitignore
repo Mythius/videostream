@@ -5,3 +5,8 @@ dist/*
 *.mkv
 site/videos/*
 site/imgs/*
+.DS_Store
+dist/*
+/.vscode
+config.json
+*.zip

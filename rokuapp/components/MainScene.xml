@@ -1,0 +1,24 @@
+<component name="MainScene" extends="Scene">
+    <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
+    <children>
+        <PosterGrid
+            id="posterGrid"
+            itemSize="[250, 150]"
+            translation="[80,50]"
+            itemSpacing="[40, 40]"
+            numColumns="4"
+            numRows="3"
+            focusable="true"
+        />
+        <Video
+            id="videoPlayer"
+            translation="[0, 0]"
+            width="1280"
+            height="720"
+            visible="false"
+        />
+        <MovieLoader
+            id="loader"
+        />
+    </children>
+</component>

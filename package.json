@@ -1,17 +1,73 @@
 {
   "name": "mylib",
   "version": "1.0.0",
-  "description": "",
-  "main": "electron.js",
+  "description": "Movie Streaming Service",
+  "main": "App/electron.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "desktop": "npx electron App/electron.js",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.matthias.videostream",
+    "productName": "MatthiasTV",
+    "directories": {
+      "output": "dist"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "server.js",
+      "site/**/*",
+      "config.json",
+      "rokuapp/**/*",
+      "node_modules/**/*"
+    ],
+    "files": [
+      "App/**/*",
+      "server.js",
+      "config.json",
+      "site/**/*",
+      "rokuapp/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "icon": "rokuapp/images/icon_focus_hd.png",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "rokuapp/images/icon_focus_hd.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "icon": "rokuapp/images/icon_focus_hd.png",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo"
+    }
   },
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/mythius/mylib.git"
   },
-  "keywords": [],
+  "keywords": [
+    "video",
+    "streaming",
+    "media",
+    "electron"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -22,6 +78,11 @@
   "dependencies": {
     "cookie-parser": "^1.4.7",
     "express": "^5.1.0",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^25.1.8"
   }
 }
