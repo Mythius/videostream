@@ -3,28 +3,87 @@
 // npx electron-builder
 
 const { app, BrowserWindow } = require('electron');
+const path = require('path');
 
 const name = "";
 
+// Start the server
+function startServer() {
+  try {
+    const fs = require('fs');
 
+    // Determine the correct path to server.js
+    let serverPath;
+    if (app.isPackaged) {
+      // In packaged app, unpacked files are in app.asar.unpacked
+      serverPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'server.js');
+      console.log('Packaged app - checking path:', serverPath);
+      console.log('File exists?', fs.existsSync(serverPath));
+
+      // If that doesn't exist, try the asar path
+      if (!fs.existsSync(serverPath)) {
+        serverPath = path.join(process.resourcesPath, 'app', 'server.js');
+        console.log('Trying alternate path:', serverPath);
+        console.log('File exists?', fs.existsSync(serverPath));
+      }
+    } else {
+      // In development, go up from App folder to root
+      serverPath = path.join(__dirname, '..', 'server.js');
+      console.log('Development mode - server path:', serverPath);
+    }
+
+    console.log('Starting server from:', serverPath);
+
+    // Check if file exists before requiring
+    if (!fs.existsSync(serverPath)) {
+      throw new Error(`Server file not found at: ${serverPath}`);
+    }
+
+    require(serverPath);
+    console.log('Server started successfully');
+  } catch (error) {
+    console.error('❌ Error starting server:', error.message);
+    console.error('Stack:', error.stack);
+
+    // Show error dialog to user
+    const { dialog } = require('electron');
+    dialog.showErrorBox('Server Error', `Failed to start server:\n${error.message}\n\nCheck DevTools console for details.`);
+  }
+}
 
 function createWindow () {
   let win = new BrowserWindow({
-    width: 800,
-    height: 590,
+    width: 1200,
+    height: 800,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
+      enableRemoteModule: true
     },
-    icon: __dirname + '/site/icon.png'
+    icon: path.join(__dirname, 'site', 'icon.png')
   })
 
-  win.loadFile('site/index.html')
+  // Use absolute path for loading the HTML file
+  const htmlPath = path.join(__dirname, 'site', 'index.html');
+  console.log('Loading HTML from:', htmlPath);
+
+  win.loadFile(htmlPath).catch(err => {
+    console.error('Failed to load HTML:', err);
+  });
 
   win.setMenu(null);
+
+  // Open DevTools for debugging (temporarily enabled for packaged app too)
+  // win.webContents.openDevTools();
 }
 
-app.on('ready', createWindow)
+app.on('ready', () => {
+  // Start the server first
+  startServer();
+
+  // Wait a moment for the server to start, then create window
+  setTimeout(createWindow, 1000);
+})
 
 /*
 

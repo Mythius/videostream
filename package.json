@@ -18,11 +18,20 @@
     "directories": {
       "output": "dist"
     },
+    "asar": true,
+    "asarUnpack": [
+      "server.js",
+      "site/**/*",
+      "config.json",
+      "rokuapp/**/*",
+      "node_modules/**/*"
+    ],
     "files": [
       "App/**/*",
       "server.js",
       "config.json",
       "site/**/*",
+      "rokuapp/**/*",
       "node_modules/**/*"
     ],
     "mac": {
@@ -69,6 +78,7 @@
   "dependencies": {
     "cookie-parser": "^1.4.7",
     "express": "^5.1.0",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {

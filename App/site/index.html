@@ -186,6 +186,7 @@
             display: flex;
             gap: 15px;
             align-items: center;
+            flex-wrap: wrap;
         }
 
         .compile-btn {
@@ -215,6 +216,83 @@
             transform: none;
         }
 
+        .qr-btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            font-weight: 600;
+        }
+
+        .qr-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
+        }
+
+        .qr-btn:active {
+            transform: scale(0.98);
+        }
+
+        .qr-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .qr-modal.show {
+            display: flex;
+        }
+
+        .qr-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .qr-content h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .qr-content canvas {
+            margin: 20px auto;
+            display: block;
+        }
+
+        .qr-content p {
+            color: #666;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+
+        .close-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-top: 20px;
+        }
+
+        .close-btn:hover {
+            background: #5568d3;
+        }
+
         .status-message {
             margin-top: 10px;
             padding: 10px;
@@ -241,9 +319,6 @@
             border: 1px solid #bee5eb;
         }
     </style>
-    <script>
-        require('../../server.js');
-    </script>
 </head>
 <body>
     <div class="container">
@@ -258,6 +333,8 @@
                     <h2>💾 Storage Usage</h2>
                     <div class="action-buttons">
                         <button class="compile-btn" onclick="compileRokuApp()" id="compileBtn">📺 Compile Roku App</button>
+                        <button class="qr-btn" onclick="showWebsiteQR()">📱 Website QR</button>
+                        <button class="qr-btn" onclick="showAppQR()">📦 Download App QR</button>
                         <button class="refresh-btn" onclick="loadData()">🔄 Refresh</button>
                     </div>
                 </div>
@@ -276,6 +353,16 @@
                     <div class="loading">Loading videos...</div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div class="qr-modal" id="qrModal">
+        <div class="qr-content">
+            <h3 id="qrTitle">QR Code</h3>
+            <canvas id="qrCanvas"></canvas>
+            <p id="qrUrl"></p>
+            <button class="close-btn" onclick="closeQRModal()">Close</button>
         </div>
     </div>
 
@@ -381,7 +468,7 @@
                 // Load video data
                 videoList.innerHTML = '<div class="loading">Loading videos...</div>';
 
-                const response = await fetch('http://localhost:80/json');
+                const response = await fetch('http://localhost:3000/json');
 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -432,7 +519,7 @@
 
             } catch (error) {
                 console.error('Error loading data:', error);
-                videoList.innerHTML = `<div class="error">Error loading videos: ${error.message}<br>Make sure the server is running on localhost:80</div>`;
+                videoList.innerHTML = `<div class="error">Error loading videos: ${error.message}<br>Make sure the server is running on localhost:3000</div>`;
                 storageText.textContent = 'Unable to load storage data';
             }
         }
@@ -453,8 +540,20 @@
             statusMessage.style.display = 'block';
             statusMessage.textContent = 'Starting Roku app compilation...';
 
-            // Get the project root directory (2 levels up from App/site)
-            const projectRoot = path.join(__dirname, '..', '..');
+            // Determine the correct paths based on whether app is packaged
+            let projectRoot;
+
+            // Check if we're in a packaged app by looking for process.resourcesPath
+            if (process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, 'app.asar.unpacked'))) {
+                // In packaged app, use app.asar.unpacked directory
+                projectRoot = path.join(process.resourcesPath, 'app.asar.unpacked');
+                console.log('Running in packaged mode, projectRoot:', projectRoot);
+            } else {
+                // In development, go up from App/site
+                projectRoot = path.join(__dirname, '..', '..');
+                console.log('Running in development mode, projectRoot:', projectRoot);
+            }
+
             const rokuAppDir = path.join(projectRoot, 'rokuapp');
             const configPath = path.join(projectRoot, 'config.json');
             const mainScenePath = path.join(rokuAppDir, 'components', 'MainScene.brs');
@@ -533,6 +632,127 @@
                 statusMessage.textContent = `❌ Error: ${error.message}`;
                 compileBtn.disabled = false;
                 compileBtn.textContent = '📺 Compile Roku App';
+            }
+        }
+
+        // QR Code functions
+        const QRCode = require('qrcode');
+
+        function closeQRModal() {
+            document.getElementById('qrModal').classList.remove('show');
+        }
+
+        function showQRCode(title, url) {
+            const modal = document.getElementById('qrModal');
+            const canvas = document.getElementById('qrCanvas');
+            const titleEl = document.getElementById('qrTitle');
+            const urlEl = document.getElementById('qrUrl');
+
+            titleEl.textContent = title;
+            urlEl.textContent = url;
+
+            QRCode.toCanvas(canvas, url, {
+                width: 300,
+                margin: 2,
+                color: {
+                    dark: '#667eea',
+                    light: '#ffffff'
+                }
+            }, (error) => {
+                if (error) {
+                    console.error('QR Code error:', error);
+                    alert('Failed to generate QR code: ' + error.message);
+                    return;
+                }
+                modal.classList.add('show');
+            });
+        }
+
+        function showWebsiteQR() {
+            const path = require('path');
+            const fs = require('fs');
+
+            // Get the URL from config
+            let projectRoot;
+            if (process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, 'app.asar.unpacked'))) {
+                projectRoot = path.join(process.resourcesPath, 'app.asar.unpacked');
+            } else {
+                projectRoot = path.join(__dirname, '..', '..');
+            }
+
+            const configPath = path.join(projectRoot, 'config.json');
+            let serverURL = 'http://192.168.86.39:3000';
+
+            if (fs.existsSync(configPath)) {
+                const configData = fs.readFileSync(configPath, 'utf8');
+                const config = JSON.parse(configData);
+                if (config.url) {
+                    serverURL = config.url;
+                }
+            }
+
+            showQRCode('📱 Scan to Visit Website', serverURL);
+        }
+
+        function showAppQR() {
+            const path = require('path');
+            const fs = require('fs');
+            const statusMessage = document.getElementById('statusMessage');
+
+            // Get paths
+            let projectRoot;
+            if (process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, 'app.asar.unpacked'))) {
+                projectRoot = path.join(process.resourcesPath, 'app.asar.unpacked');
+            } else {
+                projectRoot = path.join(__dirname, '..', '..');
+            }
+
+            const rokuAppDir = path.join(projectRoot, 'rokuapp');
+            const sourceZip = path.join(rokuAppDir, 'MatthiasTV.zip');
+            const siteDir = path.join(projectRoot, 'site');
+            const destZip = path.join(siteDir, 'MatthiasTV.zip');
+            const configPath = path.join(projectRoot, 'config.json');
+
+            // Check if the Roku app has been compiled
+            if (!fs.existsSync(sourceZip)) {
+                statusMessage.className = 'status-message error';
+                statusMessage.style.display = 'block';
+                statusMessage.textContent = '❌ Please compile the Roku app first!';
+                setTimeout(() => {
+                    statusMessage.style.display = 'none';
+                }, 3000);
+                return;
+            }
+
+            try {
+                // Copy the zip file to the site directory
+                fs.copyFileSync(sourceZip, destZip);
+
+                // Get server URL
+                let serverURL = 'http://192.168.86.39:3000';
+                if (fs.existsSync(configPath)) {
+                    const configData = fs.readFileSync(configPath, 'utf8');
+                    const config = JSON.parse(configData);
+                    if (config.url) {
+                        serverURL = config.url;
+                    }
+                }
+
+                const downloadURL = `${serverURL}/MatthiasTV.zip`;
+                showQRCode('📦 Scan to Download Roku App', downloadURL);
+
+                statusMessage.className = 'status-message success';
+                statusMessage.style.display = 'block';
+                statusMessage.textContent = `✅ Roku app is now available at: ${downloadURL}`;
+                setTimeout(() => {
+                    statusMessage.style.display = 'none';
+                }, 5000);
+
+            } catch (error) {
+                console.error('Error copying zip file:', error);
+                statusMessage.className = 'status-message error';
+                statusMessage.style.display = 'block';
+                statusMessage.textContent = `❌ Error: ${error.message}`;
             }
         }
 

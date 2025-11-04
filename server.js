@@ -1,5 +1,5 @@
 /* CONFIG */
-const port = 80;
+const port = 3000;
 
 /* END CONFIG */
 
@@ -26,9 +26,9 @@ function getLocalIPv4() {
   return "localhost"; // Fallback
 }
 
-// Get the local IP and create the URL
+// Get the local IP and create the URL with port
 const localIP = getLocalIPv4();
-const url_name = `http://${localIP}`;
+const url_name = `http://${localIP}:${port}`;
 
 // Write to config.json
 const configPath = path.join(__dirname, "config.json");
