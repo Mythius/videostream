@@ -35,6 +35,7 @@ const configPath = path.join(__dirname, "config.json");
 let config = {
   url: url_name,
   videoDirectory: path.join(__dirname, "site", "videos"),
+  password: "matthiasmovies", // Default password
 };
 
 try {
@@ -46,6 +47,7 @@ try {
     config = {
       url: url_name, // Always update URL in case IP changed
       videoDirectory: existingConfig.videoDirectory || config.videoDirectory,
+      password: existingConfig.password || config.password, // Keep existing password or use default
     };
   }
 
@@ -54,6 +56,7 @@ try {
   console.log(`Config written to ${configPath}`);
   console.log(`Server URL: ${config.url}`);
   console.log(`Video Directory: ${config.videoDirectory}`);
+  console.log(`Password: ${config.password}`);
 } catch (err) {
   console.error("Error with config file:", err);
 }
@@ -84,34 +87,31 @@ class client {
 
 const mainfolder = __dirname + "/";
 
-<<<<<<< HEAD
+const cookieParser = require("cookie-parser");
 app.use(cookieParser());
 
-const PASSWORD = 'matthiasmovies'; // Change this to your desired password
 const COOKIE_NAME = 'auth';
 
+// Password protection middleware - only for GET /
 function authMiddleware(req, res, next) {
-    // Allow access to static files (like CSS, JS, video files)
-    if (
-        // req.path.startsWith('/videos/') ||
-        req.path !== '/' && req.path !== '/login'
-    ) {
+    // Only protect GET / route
+    if (req.path !== '/' && req.path !== '/login') {
         return next();
     }
 
     // Check for password in cookie
-    if (req.cookies && req.cookies[COOKIE_NAME] === PASSWORD) {
+    if (req.cookies && req.cookies[COOKIE_NAME] === config.password) {
         return next();
     }
 
-    // If POST, check password
+    // If POST to /login, check password
     if (req.method === 'POST' && req.path === '/login') {
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
             const params = new URLSearchParams(body);
-            if (params.get('password') === PASSWORD) {
-                res.cookie(COOKIE_NAME, PASSWORD, { httpOnly: true });
+            if (params.get('password') === config.password) {
+                res.cookie(COOKIE_NAME, config.password, { httpOnly: true });
                 res.redirect(req.query.next || '/');
             } else {
                 res.send(`<html><body>
@@ -137,13 +137,7 @@ function authMiddleware(req, res, next) {
 
 app.use(authMiddleware);
 
-app.use(express.static(mainfolder+'site/'));
-
-app.get('/movies/:filename', (req, res) => {
-  const filePath = path.join(__dirname, 'site', 'videos', req.params.filename);
-=======
 app.use(express.static(mainfolder + "site/"));
->>>>>>> refs/remotes/origin/main
 
 app.get("/movies/:filename", (req, res) => {
   const filePath =
