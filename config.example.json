@@ -1,0 +1,6 @@
+{
+  "serverName": "media.msouthwick.com",
+  "videoDirectory": "/path/to/your/videos",
+  "password": "yourpassword",
+  "url": "http://media.msouthwick.com"
+}

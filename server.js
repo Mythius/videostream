@@ -28,12 +28,12 @@ function getLocalIPv4() {
 
 // Get the local IP and create the URL with port
 const localIP = getLocalIPv4();
-const url_name = `http://${localIP}:${port}`;
+const defaultServerName = `${localIP}:${port}`;
 
 // Read or create config.json
 const configPath = path.join(__dirname, "config.json");
 let config = {
-  url: url_name,
+  serverName: defaultServerName, // Can be customized to domain name like media.msouthwick.com
   videoDirectory: path.join(__dirname, "site", "videos"),
   password: "matthiasmovies", // Default password
 };
@@ -45,15 +45,23 @@ try {
 
     // Merge with defaults, keeping existing values
     config = {
-      url: url_name, // Always update URL in case IP changed
+      serverName: existingConfig.serverName || defaultServerName, // Keep existing server name or use default
       videoDirectory: existingConfig.videoDirectory || config.videoDirectory,
       password: existingConfig.password || config.password, // Keep existing password or use default
     };
   }
 
+  // Build the full URL from serverName
+  const url_name = config.serverName.startsWith('http')
+    ? config.serverName
+    : `http://${config.serverName}`;
+
+  config.url = url_name; // For backwards compatibility
+
   // Write updated config
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   console.log(`Config written to ${configPath}`);
+  console.log(`Server Name: ${config.serverName}`);
   console.log(`Server URL: ${config.url}`);
   console.log(`Video Directory: ${config.videoDirectory}`);
   console.log(`Password: ${config.password}`);
@@ -182,9 +190,9 @@ function getMovieThumbnail(movieName) {
   const imgName = movieName + ".png";
   const imgPath = path.join(mainfolder, "site", "imgs", imgName);
   if (fs.existsSync(imgPath)) {
-    return `${url_name}/imgs/${encodeURIComponent(imgName)}`;
+    return `${config.url}/imgs/${encodeURIComponent(imgName)}`;
   } else {
-    return `${url_name}/clapboard.jpg`;
+    return `${config.url}/clapboard.jpg`;
   }
 }
 
@@ -251,9 +259,9 @@ app.get("/json", (req, res) => {
       const imgName = name.replace(/\.[^/.]+$/, "") + ".png";
       const imgPath = path.join(mainfolder, "site", "imgs", imgName);
       if (fs.existsSync(imgPath)) {
-        return `${url_name}/imgs/${encodeURIComponent(imgName)}`;
+        return `${config.url}/imgs/${encodeURIComponent(imgName)}`;
       } else {
-        return `${url_name}/clapboard.jpg`;
+        return `${config.url}/clapboard.jpg`;
       }
     }
 
@@ -264,7 +272,7 @@ app.get("/json", (req, res) => {
       .sort()
       .map((e) => {
         return {
-          url: `${url_name}/movies/${encodeURI(e)}`,
+          url: `${config.url}/movies/${encodeURI(e)}`,
           thumbnail: getImage(e),
           title: e.replace(/\.[^/.]+$/, ""),
         };
