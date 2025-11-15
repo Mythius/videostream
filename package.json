@@ -4,7 +4,7 @@
   "description": "Movie Streaming Service",
   "main": "App/electron.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node diskrip/ripdisk.js",
     "start": "node server.js",
     "desktop": "npx electron App/electron.js",
     "build": "electron-builder",
@@ -78,6 +78,7 @@
   "dependencies": {
     "cookie-parser": "^1.4.7",
     "express": "^5.1.0",
+    "node-notifier": "^10.0.1",
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1"
   },
