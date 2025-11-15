@@ -19,6 +19,9 @@ try {
 // Global state
 let isRipping = false;
 let checkInterval = null;
+let lastRippedDisc = null;  // Track recently ripped disc to avoid immediate re-rip
+let lastRipTime = 0;
+const RIP_COOLDOWN_MS = 30000;  // Wait 30 seconds after ejection before detecting again
 
 /**
  * Log message with timestamp
@@ -60,11 +63,63 @@ function execPromise(command) {
  * Check if a disc is present in the drive
  */
 async function isDiscPresent() {
+    const device = config.diskDevice;
+    log(`Checking for disc presence on ${device}...`);
+    // Try several methods to detect media presence; udisksctl output varies across systems
     try {
-        const output = await execPromise(`udisksctl info -b ${config.diskDevice}`);
-        return output.includes('optical') || output.includes('MediaAvailable: true');
+        // 1) udisksctl
+        try {
+            const out = await execPromise(`udisksctl info -b ${device}`);
+            log(`udisksctl: ${out.split('\n')[0] || ''}`);
+            if (out.includes('optical') || out.includes('MediaAvailable: true') || /Media:/.test(out)) {
+                return true;
+            }
+        } catch (e) {
+            log(`udisksctl failed: ${e && e.stderr ? e.stderr : (e && e.message) || e}`);
+            // ignore and try next method
+        }
+
+        // 2) udevadm properties (ID_CDROM_MEDIA=1 when media present)
+        try {
+            const out = await execPromise(`udevadm info -q property -n ${device}`);
+            log(`udevadm: ${out.split('\n')[0] || ''}`);
+            if (/ID_CDROM_MEDIA=(1|true)/i.test(out) || /ID_FS_LABEL=/.test(out) || /ID_FS_TYPE=/.test(out)) {
+                return true;
+            }
+        } catch (e) {
+            log(`udevadm failed: ${e && e.stderr ? e.stderr : (e && e.message) || e}`);
+            // ignore and try next method
+        }
+
+        // 3) blkid will print info when there is a filesystem on the disc
+        try {
+            const out = await execPromise(`blkid ${device}`);
+            if (out && out.trim().length > 0) {
+                log(`blkid: ${out.trim()}`);
+                return true;
+            }
+        } catch (e) {
+            log(`blkid failed: ${e && e.stderr ? e.stderr : (e && e.message) || e}`);
+            // ignore
+        }
+
+        // 4) file -s can sometimes identify a filesystem on the raw device
+        try {
+            const out = await execPromise(`file -s ${device}`);
+            log(`file -s: ${out.split('\n')[0] || ''}`);
+            // If output contains common fs type or ISO9660, treat as present
+            if (/ISO 9660|ISO9660|filesystem|FAT|NTFS|ext[234]/i.test(out)) {
+                return true;
+            }
+        } catch (e) {
+            log(`file -s failed: ${e && e.stderr ? e.stderr : (e && e.message) || e}`);
+            // ignore
+        }
+
+        return false;
     } catch (error) {
-        // If device is not found or not ready, no disc is present
+        // If something unexpected happens, assume no disc
+        log('isDiscPresent unexpected error: ' + (error && error.stderr ? error.stderr : (error && error.message) || error));
         return false;
     }
 }
@@ -126,6 +181,17 @@ function sanitizeFilename(name) {
 }
 
 /**
+ * Convert a sanitized folder/name into a human-friendly title-cased name
+ * e.g. HOW_TO_TRAIN_YOUR_DRAGON -> How To Train Your Dragon
+ */
+function humanizeName(name) {
+    // Replace underscores and dashes with spaces, collapse spaces
+    let s = name.replace(/[_-]+/g, ' ').trim();
+    // Lowercase then Title Case each word
+    s = s.toLowerCase().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return s;
+}
+/**
  * Rip disc to MKV using MakeMKV
  */
 async function ripToMKV(discInfo) {
@@ -148,6 +214,13 @@ async function ripToMKV(discInfo) {
         });
         log(`Output path: ${outputPath}`);
 
+        // If no titles selected, return early with empty result
+        if (selectedTitles.length === 0) {
+            log('No titles meet the minimum length requirement; skipping MKV rip.');
+            resolve({ mkvFiles: [], outputPath });
+            return;
+        }
+
         // Build title list argument (comma-separated title indices)
         const titleList = selectedTitles.map(t => t.index).join(',');
 
@@ -160,7 +233,14 @@ async function ripToMKV(discInfo) {
             outputPath
         ];
 
+        log(`Executing: makemkvcon ${args.join(' ')}`);
+
         const makemkv = spawn('makemkvcon', args);
+
+        makemkv.on('error', (err) => {
+            log('Failed to start makemkvcon: ' + (err.message || err));
+            reject(err);
+        });
 
         let output = '';
 
@@ -208,12 +288,13 @@ async function ripToMKV(discInfo) {
 /**
  * Convert MKV to MP4 using FFmpeg
  */
-async function convertToMP4(mkvFile, outputFolder) {
+async function convertToMP4(mkvFile, outputFolder, outputFilename = null) {
     return new Promise((resolve, reject) => {
         const basename = path.basename(mkvFile, '.mkv');
-        const mp4File = path.join(outputFolder, `${basename}.mp4`);
+        const mp4Name = outputFilename || `${basename}.mp4`;
+        const mp4File = path.join(outputFolder, mp4Name);
 
-        log(`Converting ${basename}.mkv to MP4...`);
+        log(`Converting ${basename}.mkv to MP4 as ${mp4Name}...`);
 
         const args = [
             '-i', mkvFile,
@@ -240,7 +321,7 @@ async function convertToMP4(mkvFile, outputFolder) {
 
         ffmpeg.on('close', (code) => {
             if (code === 0) {
-                log(`Conversion completed: ${basename}.mp4`);
+                log(`Conversion completed: ${mp4Name}`);
                 resolve(mp4File);
             } else {
                 reject(new Error(`FFmpeg exited with code ${code}`));
@@ -294,21 +375,32 @@ async function ripDisc() {
         const titlesToRip = Math.min(config.titlesToRip || 1, discInfo.titleCount);
         log(`Disc detected: ${discInfo.name} (${discInfo.titleCount} valid titles, ripping ${titlesToRip})`);
 
-        notify('Disc Detected', `Ripping: ${discInfo.name}`);
+        notify('Disc Detected', `Retrieving: ${discInfo.name}`);
 
         // Rip to MKV
         const { mkvFiles, outputPath } = await ripToMKV(discInfo);
         log(`Created ${mkvFiles.length} MKV files`);
 
         // Create output folder
-        const finalOutputFolder = path.join(config.outputFolder, discInfo.name);
+        const finalOutputFolder = config.outputFolder;
         if (!fs.existsSync(finalOutputFolder)) {
             fs.mkdirSync(finalOutputFolder, { recursive: true });
         }
 
         // Convert each MKV to MP4
-        for (const mkvFile of mkvFiles) {
-            await convertToMP4(mkvFile, finalOutputFolder);
+        for (let i = 0; i < mkvFiles.length; i++) {
+            const mkvFile = mkvFiles[i];
+            const movieBase = humanizeName(discInfo.name);
+            let outputFilename;
+            if (mkvFiles.length === 1) {
+                outputFilename = `${movieBase}.mp4`;
+            } else {
+                // If multiple titles, append the original mkv basename to keep uniqueness
+                const titleBasename = path.basename(mkvFile, '.mkv');
+                outputFilename = `${movieBase} - ${titleBasename}.mp4`;
+            }
+
+            await convertToMP4(mkvFile, finalOutputFolder, outputFilename);
         }
 
         // Handle MKV files based on config
@@ -333,6 +425,11 @@ async function ripDisc() {
         log(`=== Ripping complete! Files saved to: ${finalOutputFolder} ===`);
         notify('Ripping Complete', `${discInfo.name} has been ripped successfully!`);
 
+        // Track this rip to avoid immediate re-rip
+        lastRippedDisc = discInfo.name;
+        lastRipTime = Date.now();
+        log(`Cooldown started (${RIP_COOLDOWN_MS / 1000}s) to prevent re-ripping the same disc`);
+
         // Eject disc if configured
         if (config.autoEject) {
             await ejectDisc();
@@ -352,6 +449,19 @@ async function ripDisc() {
 async function checkForDisc() {
     if (isRipping) {
         return;
+    }
+
+    // Skip detection during cooldown period after a successful rip
+    if (lastRippedDisc && Date.now() - lastRipTime < RIP_COOLDOWN_MS) {
+        const timeLeft = Math.ceil((RIP_COOLDOWN_MS - (Date.now() - lastRipTime)) / 1000);
+        log(`Still in cooldown for "${lastRippedDisc}" (${timeLeft}s remaining)`);
+        return;
+    }
+
+    // Clear cooldown state if cooldown has expired
+    if (lastRippedDisc && Date.now() - lastRipTime >= RIP_COOLDOWN_MS) {
+        log(`Cooldown expired for "${lastRippedDisc}"; resuming detection`);
+        lastRippedDisc = null;
     }
 
     try {

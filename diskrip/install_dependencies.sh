@@ -30,50 +30,10 @@ echo ""
 echo "Installing disk monitoring tools..."
 apt-get install -y udev inotify-tools udisks2
 
-echo ""
-echo "Installing Node.js (if not already installed)..."
-if ! command -v node &> /dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-    apt-get install -y nodejs
-else
-    echo "Node.js already installed: $(node --version)"
-fi
 
 echo ""
-echo "Installing MakeMKV..."
-# Download and install MakeMKV
-MAKEMKV_VERSION="1.17.5"
-MAKEMKV_OSS="makemkv-oss-${MAKEMKV_VERSION}"
-MAKEMKV_BIN="makemkv-bin-${MAKEMKV_VERSION}"
-
-cd /tmp
-
-# Install MakeMKV OSS (open source component)
-if [ ! -d "$MAKEMKV_OSS" ]; then
-    wget "https://www.makemkv.com/download/${MAKEMKV_OSS}.tar.gz"
-    tar -xzf "${MAKEMKV_OSS}.tar.gz"
-fi
-cd "$MAKEMKV_OSS"
-./configure
-make
-make install
-cd /tmp
-
-# Install MakeMKV BIN (binary component)
-if [ ! -d "$MAKEMKV_BIN" ]; then
-    wget "https://www.makemkv.com/download/${MAKEMKV_BIN}.tar.gz"
-    tar -xzf "${MAKEMKV_BIN}.tar.gz"
-fi
-cd "$MAKEMKV_BIN"
-mkdir -p tmp
-echo "accepted" > tmp/eula_accepted
-make
-make install
-cd /tmp
-
-# Clean up
-rm -rf "${MAKEMKV_OSS}" "${MAKEMKV_OSS}.tar.gz"
-rm -rf "${MAKEMKV_BIN}" "${MAKEMKV_BIN}.tar.gz"
+echo "Installing MakeMKV via snap..."
+snap install makemkv
 
 echo ""
 echo "Creating output directories..."
@@ -85,7 +45,7 @@ if [ -f "$CONFIG_FILE" ]; then
     TEMP_FOLDER=$(grep -oP '"tempFolder":\s*"\K[^"]+' "$CONFIG_FILE" || echo "/tmp/ripdisk")
 else
     OUTPUT_FOLDER="/media/ripped-discs"
-    TEMP_FOLDER="/tmp/ripdisk"
+    TEMP_FOLDER="$HOME/temp"
 fi
 
 mkdir -p "$OUTPUT_FOLDER"
