@@ -304,19 +304,16 @@ async function ripToMKV(discInfo) {
         const titleList = selectedTitles.map(t => t.index).join(',');
 
         // Use makemkvcon to rip specific titles
-        const args = [
-            '-r',
-            'mkv',
-            'disc:0',
-            titleList,
-            outputPath
-        ];
+        // Wrap in a shell command that sets umask before running makemkvcon
+        // This ensures the child process has the correct umask when creating files
+        const makemkvconCmd = `umask 0000 && makemkvcon -r mkv disc:0 ${titleList} ${outputPath}`;
 
-        log(`Executing: makemkvcon ${args.join(' ')}`);
+        log(`Executing: ${makemkvconCmd}`);
 
         // Prepare spawn options to ensure makemkvcon runs with proper permissions
         const spawnOptions = {
-            stdio: ['ignore', 'pipe', 'pipe']
+            stdio: ['ignore', 'pipe', 'pipe'],
+            shell: true  // Use shell to execute the command with umask
         };
 
         // If running as root, explicitly set uid/gid for the child process
@@ -333,15 +330,9 @@ async function ripToMKV(discInfo) {
             log(`Spawning makemkvcon as current user (uid: ${currentUid}, gid: ${currentGid})`);
         }
 
-        // Set umask to 0 before spawning to ensure created files have full permissions
-        const oldUmask = process.umask(0o000);
-        log(`Set umask to 0o000 (was ${oldUmask.toString(8)}) to ensure MakeMKV creates writable files`);
+        log('Using shell with umask 0000 to ensure MakeMKV creates writable files');
 
-        const makemkv = spawn('makemkvcon', args, spawnOptions);
-
-        // Restore original umask
-        process.umask(oldUmask);
-        log(`Restored umask to ${oldUmask.toString(8)}`);
+        const makemkv = spawn(makemkvconCmd, [], spawnOptions);
 
         makemkv.on('error', (err) => {
             log('Failed to start makemkvcon: ' + (err.message || err));
