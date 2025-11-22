@@ -130,13 +130,13 @@ async function convertAndCropImage(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
     // Try using ImageMagick's convert command first
     // The poster images are typically portrait (2:3), we want to crop to 3:2 landscape
-    // We'll take the center portion
+    // We'll take the top center portion
     const convertArgs = [
       inputPath,
       "-resize",
       "900x600^", // Resize to fit 3:2 ratio (900x600)
       "-gravity",
-      "center", // Center the crop
+      "north", // Top center crop
       "-extent",
       "900x600", // Crop to exact 3:2 ratio
       outputPath,

@@ -216,12 +216,11 @@ app.get("/movies/:filename", (req, res) => {
 
 // Helper function to get thumbnail URL with fallback to clapboard.jpg
 function getMovieThumbnail(movieName) {
-  const imgName = movieName + ".png";
-  const imgPath = path.join(mainfolder, "site", "imgs", imgName);
+  const imgPath = path.join(mainfolder, "site", "imgs", movieName + ".png");
   if (fs.existsSync(imgPath)) {
-    return `${config.url}/imgs/${encodeURIComponent(imgName)}`;
+    return `/imgs/${encodeURIComponent(movieName)}.png`;
   } else {
-    return `${config.url}/clapboard.jpg`;
+    return `/clapboard.jpg`;
   }
 }
 
@@ -285,10 +284,10 @@ app.get("/json", (req, res) => {
     }
 
     function getImage(name) {
-      const imgName = name.replace(/\.[^/.]+$/, "") + ".png";
-      const imgPath = path.join(mainfolder, "site", "imgs", imgName);
+      const movieName = name.replace(/\.[^/.]+$/, "");
+      const imgPath = path.join(mainfolder, "site", "imgs", movieName + ".png");
       if (fs.existsSync(imgPath)) {
-        return `${config.url}/imgs/${encodeURIComponent(imgName)}`;
+        return `${config.url}/imgs/${encodeURIComponent(movieName)}.png`;
       } else {
         return `${config.url}/clapboard.jpg`;
       }
