@@ -1,7 +1,3 @@
-/* CONFIG */
-const port = 3000;
-
-/* END CONFIG */
 
 var express = require("express");
 var app = express();
@@ -26,16 +22,29 @@ function getLocalIPv4() {
   return "localhost"; // Fallback
 }
 
-// Get the local IP and create the URL with port
-const localIP = getLocalIPv4();
-const defaultServerName = `${localIP}:${port}`;
-
 // Read or create config.json
 const configPath = path.join(__dirname, "config.json");
 let config = {
-  serverName: defaultServerName, // Can be customized to domain name like media.msouthwick.com
+  port: 3000,
+  serverName: null, // Will be set below based on port
   videoDirectory: path.join(__dirname, "site", "videos"),
   password: "matthiasmovies", // Default password
+  passwordRequired: false, // Set to true to enable password protection
+  diskrip: {
+    tempFolder: "/tmp/ripdisk",
+    diskDevice: "/dev/sr0",
+    titlesToRip: 1,
+    minTitleLength: 300,
+    autoEject: true,
+    notifyOnComplete: true,
+    keepMKV: false,
+    mp4Settings: {
+      videoCodec: "libx264",
+      audioCodec: "aac",
+      preset: "medium",
+      crf: 20
+    }
+  }
 };
 
 try {
@@ -45,10 +54,22 @@ try {
 
     // Merge with defaults, keeping existing values
     config = {
-      serverName: existingConfig.serverName || defaultServerName, // Keep existing server name or use default
+      port: existingConfig.port || config.port,
+      serverName: existingConfig.serverName || null,
       videoDirectory: existingConfig.videoDirectory || config.videoDirectory,
-      password: existingConfig.password || config.password, // Keep existing password or use default
+      password: existingConfig.password || config.password,
+      passwordRequired: existingConfig.passwordRequired !== undefined ? existingConfig.passwordRequired : config.passwordRequired,
+      diskrip: existingConfig.diskrip || config.diskrip
     };
+  }
+
+  // Get the local IP and create the default server name with port
+  const localIP = getLocalIPv4();
+  const defaultServerName = `${localIP}:${config.port}`;
+
+  // Set serverName if not already set
+  if (!config.serverName) {
+    config.serverName = defaultServerName;
   }
 
   // Build the full URL from serverName
@@ -61,6 +82,7 @@ try {
   // Write updated config
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   console.log(`Config written to ${configPath}`);
+  console.log(`Port: ${config.port}`);
   console.log(`Server Name: ${config.serverName}`);
   console.log(`Server URL: ${config.url}`);
   console.log(`Video Directory: ${config.videoDirectory}`);
@@ -68,6 +90,8 @@ try {
 } catch (err) {
   console.error("Error with config file:", err);
 }
+
+const port = config.port;
 app.use(
   cors({
     origin: "*",
@@ -102,6 +126,11 @@ const COOKIE_NAME = 'auth';
 
 // Password protection middleware - only for GET /
 function authMiddleware(req, res, next) {
+    // Skip authentication if password is not required
+    if (!config.passwordRequired) {
+        return next();
+    }
+
     // Only protect GET / route
     if (req.path !== '/' && req.path !== '/login') {
         return next();

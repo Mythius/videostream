@@ -5,12 +5,25 @@ const fs = require('fs');
 const path = require('path');
 const notifier = require('node-notifier');
 
-// Load configuration
-const CONFIG_FILE = path.join(__dirname, 'config.json');
+// Load configuration from root directory
+const CONFIG_FILE = path.join(__dirname, '..', 'config.json');
 let config;
+let outputFolder;
 
 try {
-    config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    const rootConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    // Use the diskrip section of the config
+    config = rootConfig.diskrip;
+    if (!config) {
+        console.error('Error: "diskrip" section not found in config.json');
+        process.exit(1);
+    }
+    // Use videoDirectory from root config as the output folder for ripped discs
+    outputFolder = rootConfig.videoDirectory;
+    if (!outputFolder) {
+        console.error('Error: "videoDirectory" not found in config.json');
+        process.exit(1);
+    }
 } catch (error) {
     console.error('Error loading config.json:', error.message);
     process.exit(1);
@@ -534,7 +547,7 @@ async function ripDisc() {
         log(`Created ${mkvFiles.length} MKV files`);
 
         // Create output folder
-        const finalOutputFolder = config.outputFolder;
+        const finalOutputFolder = outputFolder;
         if (!fs.existsSync(finalOutputFolder)) {
             fs.mkdirSync(finalOutputFolder, { recursive: true });
         }
@@ -666,22 +679,22 @@ async function main() {
 
     // Expand and resolve paths
     const tempFolder = path.resolve(expandPath(config.tempFolder));
-    const outputFolder = path.resolve(expandPath(config.outputFolder));
+    const resolvedOutputFolder = path.resolve(expandPath(outputFolder));
 
     // Warn if tilde was detected in original config
     if (config.tempFolder.includes('~')) {
         log(`Warning: tempFolder in config contains '~' - expanded from '${config.tempFolder}' to '${tempFolder}'`);
     }
-    if (config.outputFolder.includes('~')) {
-        log(`Warning: outputFolder in config contains '~' - expanded from '${config.outputFolder}' to '${outputFolder}'`);
+    if (outputFolder.includes('~')) {
+        log(`Warning: videoDirectory in config contains '~' - expanded from '${outputFolder}' to '${resolvedOutputFolder}'`);
     }
 
     // Update config with resolved paths
     config.tempFolder = tempFolder;
-    config.outputFolder = outputFolder;
+    outputFolder = resolvedOutputFolder;
 
     log(`Monitoring device: ${config.diskDevice}`);
-    log(`Output folder: ${config.outputFolder}`);
+    log(`Output folder: ${outputFolder}`);
     log(`Temp folder: ${config.tempFolder}`);
 
     // Create directories if they don't exist
@@ -689,15 +702,15 @@ async function main() {
         log(`Creating temp folder: ${config.tempFolder}`);
         fs.mkdirSync(config.tempFolder, { recursive: true });
     }
-    if (!fs.existsSync(config.outputFolder)) {
-        log(`Creating output folder: ${config.outputFolder}`);
-        fs.mkdirSync(config.outputFolder, { recursive: true });
+    if (!fs.existsSync(outputFolder)) {
+        log(`Creating output folder: ${outputFolder}`);
+        fs.mkdirSync(outputFolder, { recursive: true });
     }
 
     // Test writability on startup
     log('Testing directory permissions...');
     const tempWritable = await testDirectoryWritable(config.tempFolder);
-    const outputWritable = await testDirectoryWritable(config.outputFolder);
+    const outputWritable = await testDirectoryWritable(outputFolder);
 
     if (!tempWritable) {
         log(`ERROR: Temp folder ${config.tempFolder} is not writable!`);
@@ -706,8 +719,8 @@ async function main() {
         process.exit(1);
     }
     if (!outputWritable) {
-        log(`ERROR: Output folder ${config.outputFolder} is not writable!`);
-        log(`Current permissions: ${JSON.stringify(fs.statSync(config.outputFolder))}`);
+        log(`ERROR: Output folder ${outputFolder} is not writable!`);
+        log(`Current permissions: ${JSON.stringify(fs.statSync(outputFolder))}`);
         log('Please check directory permissions and ensure the service has write access.');
         process.exit(1);
     }

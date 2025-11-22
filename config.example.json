@@ -1,6 +1,23 @@
 {
+  "port": 3000,
   "serverName": "media.msouthwick.com",
   "videoDirectory": "/path/to/your/videos",
   "password": "yourpassword",
-  "url": "http://media.msouthwick.com"
+  "passwordRequired": false,
+  "url": "http://media.msouthwick.com",
+  "diskrip": {
+    "tempFolder": "/tmp/ripdisk",
+    "diskDevice": "/dev/sr0",
+    "titlesToRip": 1,
+    "minTitleLength": 300,
+    "autoEject": true,
+    "notifyOnComplete": true,
+    "keepMKV": false,
+    "mp4Settings": {
+      "videoCodec": "libx264",
+      "audioCodec": "aac",
+      "preset": "medium",
+      "crf": 20
+    }
+  }
 }
