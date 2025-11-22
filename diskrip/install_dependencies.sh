@@ -81,6 +81,42 @@ chmod 777 "$TEMP_FOLDER"
 echo "✓ Directories created with proper permissions"
 
 echo ""
+echo "Detecting Node.js installation..."
+
+# Try to find node binary in this order:
+# 1. User's current node (which node)
+# 2. NVM default installation
+# 3. Standard system paths
+NODE_PATH=""
+
+if command -v node &>/dev/null; then
+    NODE_PATH=$(which node)
+    echo "✓ Found Node.js at: $NODE_PATH"
+elif [ -f "$HOME/.nvm/nvm.sh" ]; then
+    # Source nvm and get the default node path
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    if command -v node &>/dev/null; then
+        NODE_PATH=$(which node)
+        echo "✓ Found Node.js via NVM at: $NODE_PATH"
+    fi
+fi
+
+# Fallback to common paths
+if [ -z "$NODE_PATH" ]; then
+    if [ -f "/usr/bin/node" ]; then
+        NODE_PATH="/usr/bin/node"
+        echo "✓ Using system Node.js at: $NODE_PATH"
+    elif [ -f "/usr/local/bin/node" ]; then
+        NODE_PATH="/usr/local/bin/node"
+        echo "✓ Using Node.js at: $NODE_PATH"
+    else
+        echo "ERROR: Node.js not found. Please install Node.js first."
+        exit 1
+    fi
+fi
+
+echo ""
 echo "Setting up systemd service..."
 SERVICE_FILE="/etc/systemd/system/ripdisk.service"
 SERVICE_CONTENT="[Unit]
@@ -91,7 +127,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=${SCRIPT_DIR}
-ExecStart=/usr/bin/node ${SCRIPT_DIR}/ripdisk.js
+ExecStart=${NODE_PATH} ${SCRIPT_DIR}/ripdisk.js
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -141,6 +177,7 @@ echo ""
 echo "=== Installation Complete ==="
 echo ""
 echo "Summary:"
+echo "  Node.js:     ${NODE_PATH} ($(${NODE_PATH} --version))"
 echo "  MakeMKV:     $(makemkvcon --version 2>&1 | head -1)"
 echo "  FFmpeg:      $(ffmpeg -version 2>&1 | head -1)"
 echo "  Config:      ${CONFIG_FILE}"

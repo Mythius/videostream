@@ -149,8 +149,6 @@
       const nextUrl = urlParams.get("next") || "/";
       const errorParam = urlParams.get("error");
 
-      window.location.href = nextUrl;
-
       // Show error if redirected back with error
       if (errorParam === "incorrect") {
         const errorMessage = document.getElementById("errorMessage");
@@ -160,52 +158,32 @@
 
       document
         .getElementById("loginForm")
-        .addEventListener("submit", async (e) => {
+        .addEventListener("submit", (e) => {
           e.preventDefault();
 
           const password = document.getElementById("password").value;
-          const errorMessage = document.getElementById("errorMessage");
-          errorMessage.style.display = "none";
 
-          // Create form data
-          const formData = new URLSearchParams();
-          formData.append("password", password);
+          // Create a hidden form and submit it traditionally (to allow server redirect)
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = "/login";
 
-          try {
-            const response = await fetch(
-              "/login" +
-                (nextUrl !== "/" ? "?next=" + encodeURIComponent(nextUrl) : ""),
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/x-www-form-urlencoded",
-                },
-                body: formData.toString(),
-                redirect: "manual",
-              }
-            );
+          const passwordInput = document.createElement("input");
+          passwordInput.type = "hidden";
+          passwordInput.name = "password";
+          passwordInput.value = password;
+          form.appendChild(passwordInput);
 
-            // The server will redirect, so we need to follow it
-            if (
-              response.type === "opaqueredirect" ||
-              response.status === 0 ||
-              response.status === 302
-            ) {
-              // Redirect happened, check where we ended up
-              window.location.href = nextUrl;
-            } else {
-              // No redirect means error
-              errorMessage.textContent =
-                "Incorrect password. Please try again.";
-              errorMessage.style.display = "block";
-              document.getElementById("password").value = "";
-              document.getElementById("password").focus();
-            }
-          } catch (error) {
-            console.error("Login error:", error);
-            errorMessage.textContent = "An error occurred. Please try again.";
-            errorMessage.style.display = "block";
+          if (nextUrl && nextUrl !== "/") {
+            const nextInput = document.createElement("input");
+            nextInput.type = "hidden";
+            nextInput.name = "next";
+            nextInput.value = nextUrl;
+            form.appendChild(nextInput);
           }
+
+          document.body.appendChild(form);
+          form.submit();
         });
     </script>
   </body>

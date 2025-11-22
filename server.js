@@ -127,15 +127,32 @@ app.use(cookieParser());
 
 const COOKIE_NAME = 'auth';
 
-// Password protection middleware - only for GET /
+// Login endpoint - MUST be before authMiddleware
+app.post("/login", express.urlencoded({ extended: true }), (req, res) => {
+  const { password, next } = req.body;
+
+  if (password === config.password) {
+    res.cookie(COOKIE_NAME, config.password, {
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    });
+    res.redirect(next || '/');
+  } else {
+    res.redirect('/login.html?error=incorrect' + (next ? '&next=' + encodeURIComponent(next) : ''));
+  }
+});
+
+// Password protection middleware
 function authMiddleware(req, res, next) {
     // Skip authentication if password is not required
     if (!config.passwordRequired) {
         return next();
     }
 
-    // Only protect GET / route
-    if (req.path !== '/' && req.path !== '/login' && req.path !== '/login.html') {
+    // Always allow access to login page and static assets
+    if (req.path === '/login.html' ||
+        req.path.startsWith('/clapboard.jpg') ||
+        req.path.match(/\.(css|js|png|jpg|jpeg|gif|ico|woff|woff2|ttf)$/)) {
         return next();
     }
 
@@ -144,25 +161,9 @@ function authMiddleware(req, res, next) {
         return next();
     }
 
-    // If POST to /login, check password
-    if (req.method === 'POST' && req.path === '/login') {
-        let body = '';
-        req.on('data', chunk => { body += chunk; });
-        req.on('end', () => {
-            const params = new URLSearchParams(body);
-            if (params.get('password') === config.password) {
-                res.cookie(COOKIE_NAME, config.password, { httpOnly: true });
-                res.redirect(req.query.next || '/');
-            } else {
-                // Redirect back to login with error
-                res.redirect('/login.html?error=incorrect' + (req.query.next ? '&next=' + encodeURIComponent(req.query.next) : ''));
-            }
-        });
-        return;
-    }
-
-    // Redirect to login page
-    res.redirect('/login.html' + (req.path !== '/login' && req.path !== '/' ? '?next=' + encodeURIComponent(req.path) : ''));
+    // Not authenticated - redirect to login
+    const nextPath = req.path !== '/' ? req.path : '';
+    res.redirect('/login.html' + (nextPath ? '?next=' + encodeURIComponent(nextPath) : ''));
 }
 
 app.use(authMiddleware);
@@ -386,8 +387,13 @@ function isLocalhost(req) {
   );
 }
 
-// Middleware to check if user is authenticated for settings
+// Middleware to check if user is authenticated for API endpoints
 function requireAuth(req, res, next) {
+  // Skip if password not required
+  if (!config.passwordRequired) {
+    return next();
+  }
+
   // Check for password in cookie
   if (req.cookies && req.cookies[COOKIE_NAME] === config.password) {
     return next();
@@ -446,7 +452,7 @@ app.post("/update-video-directory", express.json(), (req, res) => {
 });
 
 // API: Get movies list for settings page
-app.get("/api/movies-list", (req, res) => {
+app.get("/api/movies-list", requireAuth, (req, res) => {
   try {
     const videoDir = config.videoDirectory;
     const files = fs.readdirSync(videoDir)
@@ -471,7 +477,7 @@ app.get("/api/movies-list", (req, res) => {
 });
 
 // API: Rename movie
-app.post("/api/rename-movie", express.json(), async (req, res) => {
+app.post("/api/rename-movie", requireAuth, express.json(), async (req, res) => {
   const { oldName, newName } = req.body;
 
   if (!oldName || !newName) {
@@ -524,7 +530,7 @@ app.post("/api/rename-movie", express.json(), async (req, res) => {
 const multer = require('multer');
 const upload = multer({ dest: path.join(mainfolder, "site", "imgs", "temp") });
 
-app.post("/api/upload-thumbnail", upload.single('thumbnail'), async (req, res) => {
+app.post("/api/upload-thumbnail", requireAuth, upload.single('thumbnail'), async (req, res) => {
   const { movieName } = req.body;
   const file = req.file;
 
@@ -559,7 +565,7 @@ app.post("/api/upload-thumbnail", upload.single('thumbnail'), async (req, res) =
 });
 
 // API: Get settings
-app.get("/api/settings", (req, res) => {
+app.get("/api/settings", requireAuth, (req, res) => {
   res.json({
     serverName: config.serverName,
     password: config.password,
@@ -568,7 +574,7 @@ app.get("/api/settings", (req, res) => {
 });
 
 // API: Update settings
-app.post("/api/settings", express.json(), (req, res) => {
+app.post("/api/settings", requireAuth, express.json(), (req, res) => {
   const { serverName, password, passwordRequired } = req.body;
 
   try {
