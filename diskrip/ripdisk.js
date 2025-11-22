@@ -21,7 +21,10 @@ let isRipping = false;
 let checkInterval = null;
 let lastRippedDisc = null;  // Track recently ripped disc to avoid immediate re-rip
 let lastRipTime = 0;
+let lastDiscPresent = false;  // Track whether a disc was present in last check
+let waitingForDiscRemoval = false;  // True after ejection, waiting for disc to be removed
 const RIP_COOLDOWN_MS = 30000;  // Wait 30 seconds after ejection before detecting again
+const CHECK_INTERVAL_MS = 60000;  // Check every 60 seconds (1 minute)
 
 /**
  * Log message with timestamp
@@ -483,6 +486,10 @@ async function ejectDisc() {
         log('Ejecting disc...');
         await execPromise(`eject ${config.diskDevice}`);
         log('Disc ejected successfully');
+
+        // Set flag to wait for disc removal before checking for new discs
+        waitingForDiscRemoval = true;
+        log('Waiting for disc to be removed before detecting new discs...');
     } catch (error) {
         log('Error ejecting disc: ' + error.message);
     }
@@ -590,29 +597,54 @@ async function ripDisc() {
 
 /**
  * Check for disc and start ripping if found
+ *
+ * This function implements smart disc detection:
+ * - After ejecting a disc, waits for it to be physically removed before detecting new discs
+ * - Only logs/acts when disc state changes (prevents spam in logs)
+ * - Respects cooldown period to avoid re-ripping the same disc
  */
 async function checkForDisc() {
     if (isRipping) {
         return;
     }
 
-    // Skip detection during cooldown period after a successful rip
-    if (lastRippedDisc && Date.now() - lastRipTime < RIP_COOLDOWN_MS) {
-        const timeLeft = Math.ceil((RIP_COOLDOWN_MS - (Date.now() - lastRipTime)) / 1000);
-        log(`Still in cooldown for "${lastRippedDisc}" (${timeLeft}s remaining)`);
-        return;
-    }
-
-    // Clear cooldown state if cooldown has expired
-    if (lastRippedDisc && Date.now() - lastRipTime >= RIP_COOLDOWN_MS) {
-        log(`Cooldown expired for "${lastRippedDisc}"; resuming detection`);
-        lastRippedDisc = null;
-    }
-
     try {
         const discPresent = await isDiscPresent();
 
-        if (discPresent) {
+        // If we're waiting for disc removal, check if disc has been removed
+        if (waitingForDiscRemoval) {
+            if (!discPresent && lastDiscPresent) {
+                log('✓ Disc removed, ready to detect new discs');
+                waitingForDiscRemoval = false;
+                lastRippedDisc = null;
+            } else if (discPresent) {
+                // Disc still present, keep waiting silently (no log spam)
+                lastDiscPresent = discPresent;
+                return;
+            }
+        }
+
+        // Update disc presence state
+        const discStateChanged = discPresent !== lastDiscPresent;
+        lastDiscPresent = discPresent;
+
+        // Skip detection during cooldown period after a successful rip
+        if (lastRippedDisc && Date.now() - lastRipTime < RIP_COOLDOWN_MS) {
+            const timeLeft = Math.ceil((RIP_COOLDOWN_MS - (Date.now() - lastRipTime)) / 1000);
+            if (discStateChanged && discPresent) {
+                log(`Disc detected but still in cooldown for "${lastRippedDisc}" (${timeLeft}s remaining)`);
+            }
+            return;
+        }
+
+        // Clear cooldown state if cooldown has expired
+        if (lastRippedDisc && Date.now() - lastRipTime >= RIP_COOLDOWN_MS) {
+            log(`Cooldown expired for "${lastRippedDisc}"; resuming detection`);
+            lastRippedDisc = null;
+        }
+
+        // Only log and rip when a disc is newly detected (state change)
+        if (discPresent && discStateChanged) {
             log('Disc detected in drive!');
             await ripDisc();
         }
@@ -682,13 +714,13 @@ async function main() {
 
     log('✓ Temp folder is writable');
     log('✓ Output folder is writable');
-    log('Waiting for disc insertion...');
+    log(`Waiting for disc insertion (checking every ${CHECK_INTERVAL_MS / 1000} seconds)...`);
 
     // Check immediately on startup
     await checkForDisc();
 
-    // Then check periodically
-    checkInterval = setInterval(checkForDisc, 5000);
+    // Then check periodically (every 60 seconds instead of 5 seconds)
+    checkInterval = setInterval(checkForDisc, CHECK_INTERVAL_MS);
 
     // Handle graceful shutdown
     process.on('SIGINT', () => {
