@@ -18,11 +18,6 @@ echo "Updating package lists..."
 apt-get update
 
 echo ""
-echo "Installing MakeMKV dependencies..."
-# MakeMKV CLI
-apt-get install -y build-essential pkg-config libc6-dev libssl-dev libexpat1-dev libavcodec-dev libgl1-mesa-dev qtbase5-dev zlib1g-dev wget
-
-echo ""
 echo "Installing FFmpeg..."
 apt-get install -y ffmpeg
 
@@ -30,34 +25,65 @@ echo ""
 echo "Installing disk monitoring tools..."
 apt-get install -y udev inotify-tools udisks2
 
+echo ""
+echo "Installing MakeMKV..."
+# Check if MakeMKV snap is installed and remove it
+if snap list makemkv &>/dev/null; then
+    echo "Removing MakeMKV snap..."
+    snap remove makemkv
+fi
+
+# Install MakeMKV from PPA (native, no AppArmor restrictions)
+if ! grep -q "heyarje/makemkv-beta" /etc/apt/sources.list.d/*.list 2>/dev/null; then
+    echo "Adding MakeMKV PPA..."
+    add-apt-repository -y ppa:heyarje/makemkv-beta
+    apt-get update
+fi
+
+echo "Installing MakeMKV native packages..."
+apt-get install -y makemkv-bin makemkv-oss
+
+# Verify installation
+if ! command -v makemkvcon &>/dev/null; then
+    echo "ERROR: MakeMKV installation failed"
+    echo "makemkvcon command not found"
+    exit 1
+fi
+
+echo "✓ MakeMKV installed successfully: $(makemkvcon --version 2>&1 | head -1)"
 
 echo ""
-echo "Installing MakeMKV via snap..."
-snap install makemkv
-
-echo ""
-echo "Creating output directories..."
+echo "Configuring directories..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="${SCRIPT_DIR}/config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
-    OUTPUT_FOLDER=$(grep -oP '"outputFolder":\s*"\K[^"]+' "$CONFIG_FILE" || echo "/media/ripped-discs")
-    TEMP_FOLDER=$(grep -oP '"tempFolder":\s*"\K[^"]+' "$CONFIG_FILE" || echo "/tmp/ripdisk")
+    OUTPUT_FOLDER=$(grep -oP '"outputFolder":\s*"\K[^"]+' "$CONFIG_FILE" 2>/dev/null || echo "/media/ripped-discs")
+    TEMP_FOLDER=$(grep -oP '"tempFolder":\s*"\K[^"]+' "$CONFIG_FILE" 2>/dev/null || echo "/tmp/ripdisk")
+
+    # Expand ~ to actual home directory if present
+    OUTPUT_FOLDER="${OUTPUT_FOLDER/#\~/$HOME}"
+    TEMP_FOLDER="${TEMP_FOLDER/#\~/$HOME}"
 else
     OUTPUT_FOLDER="/media/ripped-discs"
-    TEMP_FOLDER="$HOME/temp"
+    TEMP_FOLDER="/tmp/ripdisk"
 fi
+
+echo "Creating directories:"
+echo "  Output: $OUTPUT_FOLDER"
+echo "  Temp:   $TEMP_FOLDER"
 
 mkdir -p "$OUTPUT_FOLDER"
 mkdir -p "$TEMP_FOLDER"
 chmod 777 "$OUTPUT_FOLDER"
 chmod 777 "$TEMP_FOLDER"
 
+echo "✓ Directories created with proper permissions"
+
 echo ""
 echo "Setting up systemd service..."
-# Create systemd service file
-cat > /etc/systemd/system/ripdisk.service << EOF
-[Unit]
+SERVICE_FILE="/etc/systemd/system/ripdisk.service"
+SERVICE_CONTENT="[Unit]
 Description=Automatic CD/DVD Ripper
 After=network.target
 
@@ -72,47 +98,66 @@ StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=multi-user.target
-EOF
+WantedBy=multi-user.target"
+
+# Only update if changed or doesn't exist
+if [ ! -f "$SERVICE_FILE" ] || ! diff -q <(echo "$SERVICE_CONTENT") "$SERVICE_FILE" &>/dev/null; then
+    echo "Updating systemd service file..."
+    echo "$SERVICE_CONTENT" > "$SERVICE_FILE"
+    systemctl daemon-reload
+    echo "✓ Service file updated"
+else
+    echo "✓ Service file already up to date"
+fi
 
 echo ""
-echo "Creating udev rule for automatic disk detection..."
-# Create udev rule
-cat > /etc/udev/rules.d/99-cdrom.rules << 'EOF'
-# Trigger on CD/DVD insertion
-KERNEL=="sr[0-9]*", ACTION=="change", ENV{DISK_MEDIA_CHANGE}=="1", RUN+="/bin/systemctl restart ripdisk.service"
-EOF
+echo "Setting up udev rule for automatic disk detection..."
+UDEV_RULE="/etc/udev/rules.d/99-cdrom.rules"
+UDEV_CONTENT='# Trigger on CD/DVD insertion
+KERNEL=="sr[0-9]*", ACTION=="change", ENV{DISK_MEDIA_CHANGE}=="1", RUN+="/bin/systemctl restart ripdisk.service"'
 
-# Reload udev rules
-udevadm control --reload-rules
+# Only update if changed or doesn't exist
+if [ ! -f "$UDEV_RULE" ] || ! diff -q <(echo "$UDEV_CONTENT") "$UDEV_RULE" &>/dev/null; then
+    echo "Updating udev rule..."
+    echo "$UDEV_CONTENT" > "$UDEV_RULE"
+    udevadm control --reload-rules
+    echo "✓ Udev rule updated"
+else
+    echo "✓ Udev rule already up to date"
+fi
 
 echo ""
 echo "Installing npm dependencies..."
 cd "$SCRIPT_DIR"
-npm install node-notifier
 
-echo ""
-echo "Configuring AppArmor for MakeMKV snap..."
-if [ -f "${SCRIPT_DIR}/setup-apparmor.sh" ]; then
-    bash "${SCRIPT_DIR}/setup-apparmor.sh"
+# Install npm packages (idempotent - won't reinstall if already present)
+if [ -f "package.json" ]; then
+    npm install
 else
-    echo "WARNING: setup-apparmor.sh not found, skipping AppArmor configuration"
-    echo "You may need to manually configure AppArmor permissions"
+    npm install node-notifier
 fi
 
 echo ""
 echo "=== Installation Complete ==="
 echo ""
-echo "To start the service:"
-echo "  sudo systemctl enable ripdisk.service"
-echo "  sudo systemctl start ripdisk.service"
+echo "Summary:"
+echo "  MakeMKV:     $(makemkvcon --version 2>&1 | head -1)"
+echo "  FFmpeg:      $(ffmpeg -version 2>&1 | head -1)"
+echo "  Config:      ${CONFIG_FILE}"
+echo "  Temp folder: ${TEMP_FOLDER}"
+echo "  Output:      ${OUTPUT_FOLDER}"
 echo ""
-echo "To check status:"
-echo "  sudo systemctl status ripdisk.service"
+echo "Next steps:"
 echo ""
-echo "To view logs:"
-echo "  sudo journalctl -u ripdisk.service -f"
+echo "1. Enable and start the service:"
+echo "   sudo systemctl enable ripdisk.service"
+echo "   sudo systemctl start ripdisk.service"
 echo ""
-echo "Configuration file: ${CONFIG_FILE}"
-echo "Output folder: ${OUTPUT_FOLDER}"
+echo "2. Check service status:"
+echo "   sudo systemctl status ripdisk.service"
+echo ""
+echo "3. Monitor logs in real-time:"
+echo "   sudo journalctl -u ripdisk.service -f"
+echo ""
+echo "Note: This script is idempotent and can be run multiple times safely."
 echo ""
