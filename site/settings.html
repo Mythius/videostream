@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - MatthiasTV</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            min-height: 100vh;
+            color: white;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            padding: 20px 40px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .back-btn {
+            background: rgba(102, 126, 234, 0.2);
+            border: 2px solid rgba(102, 126, 234, 0.4);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .back-btn:hover {
+            background: rgba(102, 126, 234, 0.4);
+            border-color: rgba(102, 126, 234, 0.6);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px;
+        }
+
+        .section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section h2 {
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="password"],
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: white;
+            font-size: 1em;
+        }
+
+        .form-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: transform 0.3s ease;
+            margin-right: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .movie-list {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .movie-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .movie-item img {
+            width: 80px;
+            height: 53px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+
+        .movie-info {
+            flex: 1;
+        }
+
+        .movie-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .movie-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .small-btn {
+            padding: 8px 16px;
+            font-size: 0.9em;
+        }
+
+        .message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .message.success {
+            background: rgba(76, 175, 80, 0.2);
+            border: 2px solid rgba(76, 175, 80, 0.4);
+            color: #4caf50;
+        }
+
+        .message.error {
+            background: rgba(244, 67, 54, 0.2);
+            border: 2px solid rgba(244, 67, 54, 0.4);
+            color: #f44336;
+        }
+
+        .file-upload {
+            display: none;
+        }
+
+        .upload-label {
+            display: inline-block;
+            padding: 8px 16px;
+            background: rgba(102, 126, 234, 0.2);
+            border: 2px solid rgba(102, 126, 234, 0.4);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+        }
+
+        .upload-label:hover {
+            background: rgba(102, 126, 234, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚙️ Settings</h1>
+        <a href="/" class="back-btn">← Back to Movies</a>
+    </div>
+
+    <div class="container">
+        <!-- General Settings -->
+        <div class="section">
+            <h2>General Settings</h2>
+            <div class="form-group">
+                <label for="serverName">Server Name</label>
+                <input type="text" id="serverName" placeholder="e.g., 192.168.1.100:3000">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Password for accessing the server">
+            </div>
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="passwordRequired">
+                    <span>Require password to access server</span>
+                </label>
+            </div>
+            <button class="btn" onclick="saveGeneralSettings()">Save Settings</button>
+            <div class="message" id="generalMessage"></div>
+        </div>
+
+        <!-- Movie Management -->
+        <div class="section">
+            <h2>Manage Movies</h2>
+            <div class="movie-list" id="movieList">
+                <p style="text-align: center; color: rgba(255, 255, 255, 0.5);">Loading movies...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let movies = [];
+
+        // Check authentication and redirect if needed
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/settings');
+                if (response.status === 401) {
+                    // Not authenticated, redirect to login
+                    // window.location.href = '/login.html?next=' + encodeURIComponent('/settings.html');
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                return false;
+            }
+        }
+
+        // Load movies on page load
+        async function loadMovies() {
+            try {
+                const response = await fetch('/api/movies-list');
+                if (response.status === 401) {
+                    // window.location.href = '/login?next=' + encodeURIComponent('/settings.html');
+                    return;
+                }
+                movies = await response.json();
+                renderMovies();
+            } catch (error) {
+                console.error('Error loading movies:', error);
+                document.getElementById('movieList').innerHTML = '<p style="text-align: center; color: #f44336;">Error loading movies</p>';
+            }
+        }
+
+        function renderMovies() {
+            const movieList = document.getElementById('movieList');
+            if (movies.length === 0) {
+                movieList.innerHTML = '<p style="text-align: center; color: rgba(255, 255, 255, 0.5);">No movies found</p>';
+                return;
+            }
+
+            movieList.innerHTML = movies.map(movie => `
+                <div class="movie-item">
+                    <img src="${movie.thumbnail}" alt="${movie.title}" onerror="this.src='/clapboard.jpg'">
+                    <div class="movie-info">
+                        <div class="movie-name">${movie.title}</div>
+                    </div>
+                    <div class="movie-actions">
+                        <button class="btn small-btn" onclick="renameMovie('${movie.title}')">Rename</button>
+                        <label class="upload-label">
+                            Upload Thumbnail
+                            <input type="file" class="file-upload" accept="image/*" onchange="uploadThumbnail('${movie.title}', this.files[0])">
+                        </label>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function renameMovie(oldName) {
+            const newName = prompt('Enter new name for the movie:', oldName);
+            if (!newName || newName === oldName) return;
+
+            try {
+                const response = await fetch('/api/rename-movie', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ oldName, newName })
+                });
+
+                if (response.status === 401) {
+                    window.location.href = '/login?next=' + encodeURIComponent('/settings.html');
+                    return;
+                }
+
+                const result = await response.json();
+                if (result.success) {
+                    showMessage('generalMessage', 'Movie renamed successfully!', 'success');
+                    loadMovies(); // Reload the list
+                } else {
+                    showMessage('generalMessage', 'Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('generalMessage', 'Error renaming movie: ' + error.message, 'error');
+            }
+        }
+
+        async function uploadThumbnail(movieName, file) {
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('movieName', movieName);
+            formData.append('thumbnail', file);
+
+            try {
+                const response = await fetch('/api/upload-thumbnail', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.status === 401) {
+                    window.location.href = '/login?next=' + encodeURIComponent('/settings.html');
+                    return;
+                }
+
+                const result = await response.json();
+                if (result.success) {
+                    showMessage('generalMessage', 'Thumbnail uploaded successfully!', 'success');
+                    loadMovies(); // Reload to show new thumbnail
+                } else {
+                    showMessage('generalMessage', 'Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('generalMessage', 'Error uploading thumbnail: ' + error.message, 'error');
+            }
+        }
+
+        async function loadGeneralSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                if (response.status === 401) {
+                    // window.location.href = '/login?next=' + encodeURIComponent('/settings.html');
+                    return;
+                }
+                const settings = await response.json();
+                document.getElementById('serverName').value = settings.serverName || '';
+                document.getElementById('password').value = settings.password || '';
+                document.getElementById('passwordRequired').checked = settings.passwordRequired || false;
+            } catch (error) {
+                console.error('Error loading settings:', error);
+            }
+        }
+
+        async function saveGeneralSettings() {
+            const settings = {
+                serverName: document.getElementById('serverName').value,
+                password: document.getElementById('password').value,
+                passwordRequired: document.getElementById('passwordRequired').checked
+            };
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                if (response.status === 401) {
+                    // window.location.href = '/login?next=' + encodeURIComponent('/settings.html');
+                    return;
+                }
+
+                const result = await response.json();
+                if (result.success) {
+                    showMessage('generalMessage', 'Settings saved successfully!', 'success');
+                } else {
+                    showMessage('generalMessage', 'Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('generalMessage', 'Error saving settings: ' + error.message, 'error');
+            }
+        }
+
+        function showMessage(elementId, message, type) {
+            const messageEl = document.getElementById(elementId);
+            messageEl.textContent = message;
+            messageEl.className = 'message ' + type;
+            messageEl.style.display = 'block';
+            setTimeout(() => {
+                messageEl.style.display = 'none';
+            }, 5000);
+        }
+
+        // Initialize
+        loadMovies();
+        loadGeneralSettings();
+    </script>
+</body>
+</html>

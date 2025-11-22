@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - MatthiasTV</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+        min-height: 100vh;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .login-container {
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 40px;
+        width: 90%;
+        max-width: 400px;
+        backdrop-filter: blur(10px);
+      }
+
+      .login-container h1 {
+        font-size: 2.5em;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 10px;
+        text-align: center;
+      }
+
+      .login-container p {
+        color: rgba(255, 255, 255, 0.7);
+        margin-bottom: 30px;
+        text-align: center;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: rgba(255, 255, 255, 0.9);
+        font-weight: 500;
+      }
+
+      .form-group input {
+        width: 100%;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        color: white;
+        font-size: 1em;
+      }
+
+      .form-group input:focus {
+        outline: none;
+        border-color: rgba(102, 126, 234, 0.6);
+      }
+
+      .btn {
+        width: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1em;
+        transition: transform 0.3s ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+      }
+
+      .error {
+        background: rgba(244, 67, 54, 0.2);
+        border: 2px solid rgba(244, 67, 54, 0.4);
+        color: #f44336;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: none;
+      }
+
+      .back-link {
+        text-align: center;
+        margin-top: 20px;
+      }
+
+      .back-link a {
+        color: rgba(102, 126, 234, 0.8);
+        text-decoration: none;
+        transition: color 0.3s ease;
+      }
+
+      .back-link a:hover {
+        color: rgba(102, 126, 234, 1);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="login-container">
+      <h1>🎬 MatthiasTV</h1>
+      <p>Please enter your password to continue</p>
+
+      <div class="error" id="errorMessage"></div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="Enter password"
+            autofocus
+            required
+          />
+        </div>
+
+        <button type="submit" class="btn">Login</button>
+      </form>
+
+      <div class="back-link">
+        <a href="/">← Back to Movies</a>
+      </div>
+    </div>
+
+    <script>
+      const urlParams = new URLSearchParams(window.location.search);
+      const nextUrl = urlParams.get("next") || "/";
+      const errorParam = urlParams.get("error");
+
+      window.location.href = nextUrl;
+
+      // Show error if redirected back with error
+      if (errorParam === "incorrect") {
+        const errorMessage = document.getElementById("errorMessage");
+        errorMessage.textContent = "Incorrect password. Please try again.";
+        errorMessage.style.display = "block";
+      }
+
+      document
+        .getElementById("loginForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const password = document.getElementById("password").value;
+          const errorMessage = document.getElementById("errorMessage");
+          errorMessage.style.display = "none";
+
+          // Create form data
+          const formData = new URLSearchParams();
+          formData.append("password", password);
+
+          try {
+            const response = await fetch(
+              "/login" +
+                (nextUrl !== "/" ? "?next=" + encodeURIComponent(nextUrl) : ""),
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: formData.toString(),
+                redirect: "manual",
+              }
+            );
+
+            // The server will redirect, so we need to follow it
+            if (
+              response.type === "opaqueredirect" ||
+              response.status === 0 ||
+              response.status === 302
+            ) {
+              // Redirect happened, check where we ended up
+              window.location.href = nextUrl;
+            } else {
+              // No redirect means error
+              errorMessage.textContent =
+                "Incorrect password. Please try again.";
+              errorMessage.style.display = "block";
+              document.getElementById("password").value = "";
+              document.getElementById("password").focus();
+            }
+          } catch (error) {
+            console.error("Login error:", error);
+            errorMessage.textContent = "An error occurred. Please try again.";
+            errorMessage.style.display = "block";
+          }
+        });
+    </script>
+  </body>
+</html>

@@ -26,6 +26,26 @@
             top: 0;
             z-index: 100;
             border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .header.collapsed {
+            padding: 10px 40px;
+        }
+
+        .header.collapsed h1 {
+            font-size: 1.8em;
+        }
+
+        .header.collapsed p {
+            display: none;
+        }
+
+        .header-left {
+            flex: 1;
         }
 
         .header h1 {
@@ -34,11 +54,31 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            transition: font-size 0.3s ease;
         }
 
         .header p {
             color: rgba(255, 255, 255, 0.7);
             margin-top: 5px;
+            transition: opacity 0.3s ease;
+        }
+
+        .settings-btn {
+            background: rgba(102, 126, 234, 0.2);
+            border: 2px solid rgba(102, 126, 234, 0.4);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .settings-btn:hover {
+            background: rgba(102, 126, 234, 0.4);
+            border-color: rgba(102, 126, 234, 0.6);
         }
 
         .container {
@@ -147,9 +187,12 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🎬 MatthiasTV</h1>
-        <p>Browse and stream your favorite movies</p>
+    <div class="header" id="header">
+        <div class="header-left">
+            <h1>🎬 MatthiasTV</h1>
+            <p>Browse and stream your favorite movies</p>
+        </div>
+        <a href="/settings.html" class="settings-btn" id="settingsBtn" style="display: none;">⚙️ Settings</a>
     </div>
 
     <div class="container">
@@ -165,10 +208,16 @@
 
     <script>
         const moviesData = __MOVIES_DATA__;
+        const showSettings = __SHOW_SETTINGS__;
         let displayedMovies = [];
         let currentIndex = 0;
         const MOVIES_PER_PAGE = 16;
         const enableInfiniteScroll = moviesData.length > 15;
+
+        // Show settings button if enabled
+        if (showSettings) {
+            document.getElementById('settingsBtn').style.display = 'inline-block';
+        }
 
         function createMovieCard(movie) {
             return `
@@ -196,7 +245,22 @@
             }
         }
 
+        let lastScroll = 0;
+
         function handleScroll() {
+            // Handle collapsing banner
+            const header = document.getElementById('header');
+            const currentScroll = window.scrollY;
+
+            if (currentScroll > 100) {
+                header.classList.add('collapsed');
+            } else {
+                header.classList.remove('collapsed');
+            }
+
+            lastScroll = currentScroll;
+
+            // Handle infinite scroll
             if (!enableInfiniteScroll) return;
 
             const scrollPosition = window.innerHeight + window.scrollY;
@@ -214,9 +278,11 @@
         }
 
         // Initialize
+        // Always listen to scroll for banner collapse
+        window.addEventListener('scroll', handleScroll);
+
         if (enableInfiniteScroll) {
             currentIndex = MOVIES_PER_PAGE;
-            window.addEventListener('scroll', handleScroll);
         }
 
         // Handle empty state
