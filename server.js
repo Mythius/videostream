@@ -371,6 +371,13 @@ app.post("/update-video-directory", express.json(), (req, res) => {
 
 http.listen(port, () => {
   console.log(`Serving http://localhost${port == 80 ? "" : `:${port}`}`);
+
+  // Fetch missing thumbnails on startup
+  console.log('Checking for missing thumbnails...');
+  const getThumbnails = require('./diskrip/get_thumbnails.js');
+  getThumbnails.main().catch(error => {
+    console.error('Error fetching thumbnails on startup:', error.message);
+  });
 });
 
 io.on("connection", (socket) => {

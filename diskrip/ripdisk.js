@@ -590,6 +590,15 @@ async function ripDisc() {
         log(`=== Ripping complete! Files saved to: ${finalOutputFolder} ===`);
         notify('Ripping Complete', `${discInfo.name} has been ripped successfully!`);
 
+        // Fetch thumbnail for the newly ripped movie
+        log('Fetching thumbnail for newly ripped movie...');
+        try {
+            const getThumbnails = require('./get_thumbnails.js');
+            await getThumbnails.main();
+        } catch (error) {
+            log(`Error fetching thumbnails: ${error.message}`);
+        }
+
         // Track this rip to avoid immediate re-rip
         lastRippedDisc = discInfo.name;
         lastRipTime = Date.now();
