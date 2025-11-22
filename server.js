@@ -471,7 +471,7 @@ app.get("/api/movies-list", (req, res) => {
 });
 
 // API: Rename movie
-app.post("/api/rename-movie", express.json(), (req, res) => {
+app.post("/api/rename-movie", express.json(), async (req, res) => {
   const { oldName, newName } = req.body;
 
   if (!oldName || !newName) {
@@ -506,6 +506,13 @@ app.post("/api/rename-movie", express.json(), (req, res) => {
     }
 
     console.log(`Renamed movie: ${oldName} -> ${newName}`);
+
+    // Fetch new thumbnail for the renamed movie in the background
+    const getThumbnails = require('./diskrip/get_thumbnails.js');
+    getThumbnails.main().catch(error => {
+      console.error('Error fetching thumbnails after rename:', error.message);
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error("Error renaming movie:", error);
