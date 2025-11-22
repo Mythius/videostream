@@ -174,6 +174,39 @@ async function getDiscInfo() {
 }
 
 /**
+ * Expand ~ in paths to home directory
+ */
+function expandPath(filePath) {
+    if (!filePath) return filePath;
+
+    // If path starts with ~, expand it
+    if (filePath.startsWith('~/') || filePath === '~') {
+        const home = process.env.HOME || process.env.USERPROFILE;
+        if (!home) {
+            log('Warning: Cannot expand ~ in path - HOME environment variable not set');
+            return filePath;
+        }
+        return filePath.replace(/^~/, home);
+    }
+
+    return filePath;
+}
+
+/**
+ * Test if a directory is writable
+ */
+async function testDirectoryWritable(dirPath) {
+    try {
+        const testFile = path.join(dirPath, `.write-test-${Date.now()}`);
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+/**
  * Sanitize filename
  */
 function sanitizeFilename(name) {
@@ -195,37 +228,59 @@ function humanizeName(name) {
  * Rip disc to MKV using MakeMKV
  */
 async function ripToMKV(discInfo) {
+    // Allow configuring whether to create a subfolder per-disc inside tempFolder.
+    // If config.createTempSubfolder is === false, write files directly into tempFolder.
+    const useSubfolder = !(config.createTempSubfolder === false);
+    const outputPath = useSubfolder ? path.join(config.tempFolder, discInfo.name) : config.tempFolder;
+
+    // Create temp folder or per-disc subfolder with proper permissions so it's writable even when run as sudo
+    if (!fs.existsSync(outputPath)) {
+        log(`Creating output directory: ${outputPath}`);
+        fs.mkdirSync(outputPath, { recursive: true, mode: 0o777 });
+    }
+
+    // Log current permissions before changes
+    try {
+        const statBefore = fs.statSync(outputPath);
+        log(`Directory ${outputPath} before permission changes: uid=${statBefore.uid}, gid=${statBefore.gid}, mode=${statBefore.mode.toString(8)}`);
+    } catch (err) {
+        log(`Warning: Could not stat directory: ${err.message}`);
+    }
+
+    // Ensure directory is writable: chown to current user and chmod to 0o777
+    // This fixes the issue where sudo creates root-owned directory that non-root can't write to
+    try {
+        // Get the user that should own this (if running as sudo, use the sudo user)
+        let targetUid = process.getuid();
+        let targetGid = process.getgid();
+
+        // If running as root (uid 0), try to get the sudo user from environment
+        if (targetUid === 0 && process.env.SUDO_UID) {
+            targetUid = parseInt(process.env.SUDO_UID);
+            targetGid = parseInt(process.env.SUDO_GID) || targetGid;
+            log(`Running as root with sudo; setting directory owner to sudo user (uid: ${targetUid}, gid: ${targetGid})`);
+        }
+
+        fs.chownSync(outputPath, targetUid, targetGid);
+        fs.chmodSync(outputPath, 0o777);
+        log(`Set ${outputPath} to uid:${targetUid}, gid:${targetGid}, mode 0o777`);
+
+        // Verify permissions were set correctly
+        const statAfter = fs.statSync(outputPath);
+        log(`Directory ${outputPath} after permission changes: uid=${statAfter.uid}, gid=${statAfter.gid}, mode=${statAfter.mode.toString(8)}`);
+    } catch (err) {
+        log(`Warning: Failed to set directory permissions: ${err.message}`);
+    }
+
+    // Test that the directory is actually writable
+    log('Testing directory writability before starting MakeMKV...');
+    const isWritable = await testDirectoryWritable(outputPath);
+    if (!isWritable) {
+        throw new Error(`Directory ${outputPath} is not writable! Check permissions and try again.`);
+    }
+    log('✓ Directory is writable');
+
     return new Promise((resolve, reject) => {
-        // Allow configuring whether to create a subfolder per-disc inside tempFolder.
-        // If config.createTempSubfolder is === false, write files directly into tempFolder.
-        const useSubfolder = !(config.createTempSubfolder === false);
-        const outputPath = useSubfolder ? path.join(config.tempFolder, discInfo.name) : config.tempFolder;
-
-        // Create temp folder or per-disc subfolder with proper permissions so it's writable even when run as sudo
-        if (!fs.existsSync(outputPath)) {
-            fs.mkdirSync(outputPath, { recursive: true });
-        }
-
-        // Ensure directory is writable: chown to current user and chmod to 0o777
-        // This fixes the issue where sudo creates root-owned directory that non-root can't write to
-        try {
-            // Get the user that should own this (if running as sudo, use the sudo user)
-            let targetUid = process.getuid();
-            let targetGid = process.getgid();
-
-            // If running as root (uid 0), try to get the sudo user from environment
-            if (targetUid === 0 && process.env.SUDO_UID) {
-                targetUid = parseInt(process.env.SUDO_UID);
-                targetGid = parseInt(process.env.SUDO_GID) || targetGid;
-                log(`Running as root with sudo; setting directory owner to sudo user (uid: ${targetUid}, gid: ${targetGid})`);
-            }
-
-            fs.chownSync(outputPath, targetUid, targetGid);
-            fs.chmodSync(outputPath, 0o777);
-            log(`Set ${outputPath} to uid:${targetUid}, gid:${targetGid}, mode 0o777`);
-        } catch (err) {
-            log(`Warning: Failed to set directory permissions: ${err.message}`);
-        }
 
         // Determine which titles to rip
         const titlesToRip = config.titlesToRip || 1;
@@ -259,7 +314,34 @@ async function ripToMKV(discInfo) {
 
         log(`Executing: makemkvcon ${args.join(' ')}`);
 
-        const makemkv = spawn('makemkvcon', args);
+        // Prepare spawn options to ensure makemkvcon runs with proper permissions
+        const spawnOptions = {
+            stdio: ['ignore', 'pipe', 'pipe']
+        };
+
+        // If running as root, explicitly set uid/gid for the child process
+        // This ensures makemkvcon inherits root permissions and can write files
+        const currentUid = process.getuid();
+        const currentGid = process.getgid();
+
+        if (currentUid === 0) {
+            // Running as root - makemkvcon will also run as root
+            spawnOptions.uid = 0;
+            spawnOptions.gid = 0;
+            log(`Spawning makemkvcon as root (uid: 0, gid: 0)`);
+        } else {
+            log(`Spawning makemkvcon as current user (uid: ${currentUid}, gid: ${currentGid})`);
+        }
+
+        // Set umask to 0 before spawning to ensure created files have full permissions
+        const oldUmask = process.umask(0o000);
+        log(`Set umask to 0o000 (was ${oldUmask.toString(8)}) to ensure MakeMKV creates writable files`);
+
+        const makemkv = spawn('makemkvcon', args, spawnOptions);
+
+        // Restore original umask
+        process.umask(oldUmask);
+        log(`Restored umask to ${oldUmask.toString(8)}`);
 
         makemkv.on('error', (err) => {
             log('Failed to start makemkvcon: ' + (err.message || err));
@@ -315,6 +397,42 @@ async function ripToMKV(discInfo) {
                     reject(err);
                 }
             } else {
+                log(`ERROR: MakeMKV exited with code ${code}`);
+
+                // Log comprehensive diagnostic information
+                log('=== Diagnostic Information ===');
+                log(`Output directory: ${outputPath}`);
+
+                // Try to list directory contents and permissions
+                try {
+                    log('Attempting to list directory contents...');
+                    execPromise(`ls -la ${outputPath}`).then(lsOutput => {
+                        log(`Directory listing:\n${lsOutput}`);
+                    }).catch(lsErr => {
+                        log(`Failed to list directory: ${lsErr.message}`);
+                    });
+                } catch (e) {
+                    log(`Failed to execute ls command: ${e.message}`);
+                }
+
+                // Log directory permissions
+                try {
+                    const stat = fs.statSync(outputPath);
+                    log(`Directory permissions: uid=${stat.uid}, gid=${stat.gid}, mode=${stat.mode.toString(8)}`);
+                } catch (statErr) {
+                    log(`Failed to stat directory: ${statErr.message}`);
+                }
+
+                // Log current process info
+                log(`Current process: uid=${process.getuid()}, gid=${process.getgid()}`);
+
+                // Log suggestions
+                log('=== Troubleshooting Suggestions ===');
+                log('1. Ensure the directory has proper permissions (chmod 777)');
+                log('2. Check if the disk has enough free space');
+                log('3. Verify MakeMKV can access the disc drive');
+                log('4. Check system logs for more details: journalctl -u ripdisk -n 50');
+
                 reject(new Error(`MakeMKV exited with code ${code}`));
             }
         });
@@ -517,9 +635,62 @@ async function checkForDisc() {
  */
 async function main() {
     log('=== CD/DVD Auto-Ripper Started ===');
+
+    // Log process information
+    log(`Process UID: ${process.getuid()}, GID: ${process.getgid()}`);
+    log(`Environment: USER=${process.env.USER}, HOME=${process.env.HOME}`);
+    log(`SUDO_UID=${process.env.SUDO_UID || 'not set'}, SUDO_GID=${process.env.SUDO_GID || 'not set'}`);
+
+    // Expand and resolve paths
+    const tempFolder = path.resolve(expandPath(config.tempFolder));
+    const outputFolder = path.resolve(expandPath(config.outputFolder));
+
+    // Warn if tilde was detected in original config
+    if (config.tempFolder.includes('~')) {
+        log(`Warning: tempFolder in config contains '~' - expanded from '${config.tempFolder}' to '${tempFolder}'`);
+    }
+    if (config.outputFolder.includes('~')) {
+        log(`Warning: outputFolder in config contains '~' - expanded from '${config.outputFolder}' to '${outputFolder}'`);
+    }
+
+    // Update config with resolved paths
+    config.tempFolder = tempFolder;
+    config.outputFolder = outputFolder;
+
     log(`Monitoring device: ${config.diskDevice}`);
     log(`Output folder: ${config.outputFolder}`);
     log(`Temp folder: ${config.tempFolder}`);
+
+    // Create directories if they don't exist
+    if (!fs.existsSync(config.tempFolder)) {
+        log(`Creating temp folder: ${config.tempFolder}`);
+        fs.mkdirSync(config.tempFolder, { recursive: true });
+    }
+    if (!fs.existsSync(config.outputFolder)) {
+        log(`Creating output folder: ${config.outputFolder}`);
+        fs.mkdirSync(config.outputFolder, { recursive: true });
+    }
+
+    // Test writability on startup
+    log('Testing directory permissions...');
+    const tempWritable = await testDirectoryWritable(config.tempFolder);
+    const outputWritable = await testDirectoryWritable(config.outputFolder);
+
+    if (!tempWritable) {
+        log(`ERROR: Temp folder ${config.tempFolder} is not writable!`);
+        log(`Current permissions: ${JSON.stringify(fs.statSync(config.tempFolder))}`);
+        log('Please check directory permissions and ensure the service has write access.');
+        process.exit(1);
+    }
+    if (!outputWritable) {
+        log(`ERROR: Output folder ${config.outputFolder} is not writable!`);
+        log(`Current permissions: ${JSON.stringify(fs.statSync(config.outputFolder))}`);
+        log('Please check directory permissions and ensure the service has write access.');
+        process.exit(1);
+    }
+
+    log('✓ Temp folder is writable');
+    log('✓ Output folder is writable');
     log('Waiting for disc insertion...');
 
     // Check immediately on startup
