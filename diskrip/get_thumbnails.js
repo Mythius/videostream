@@ -68,54 +68,15 @@ function getExistingThumbnails() {
 /**
  * Search for movie poster using custom API
  * API endpoint: moviedb.msouthwick.com
+ * Returns the image URL directly (API serves the image itself)
  */
 async function searchMoviePoster(movieTitle) {
-  try {
-    const apiUrl = `https://moviedb.msouthwick.com/poster?movie=${encodeURIComponent(
-      movieTitle
-    )}`;
-    const data = await fetchJSON(apiUrl);
+  const apiUrl = `https://moviedb.msouthwick.com/poster?movie=${encodeURIComponent(
+    movieTitle
+  )}`;
 
-    if (data && data.posterUrl) {
-      log(`Found poster for "${movieTitle}"`);
-      return data.posterUrl;
-    }
-
-    log(`No poster found for "${movieTitle}"`);
-    return null;
-  } catch (error) {
-    log(`API error for "${movieTitle}": ${error.message}`);
-    return null;
-  }
-}
-
-/**
- * Fetch JSON from URL
- */
-function fetchJSON(url) {
-  return new Promise((resolve, reject) => {
-    const protocol = url.startsWith("https") ? https : http;
-
-    protocol
-      .get(url, (res) => {
-        let data = "";
-
-        res.on("data", (chunk) => {
-          data += chunk;
-        });
-
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(data));
-          } catch (error) {
-            reject(error);
-          }
-        });
-      })
-      .on("error", (error) => {
-        reject(error);
-      });
-  });
+  log(`Found poster for "${movieTitle}"`);
+  return apiUrl;
 }
 
 /**
