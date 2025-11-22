@@ -196,11 +196,35 @@ function humanizeName(name) {
  */
 async function ripToMKV(discInfo) {
     return new Promise((resolve, reject) => {
-        const outputPath = path.join(config.tempFolder, discInfo.name);
+        // Allow configuring whether to create a subfolder per-disc inside tempFolder.
+        // If config.createTempSubfolder is === false, write files directly into tempFolder.
+        const useSubfolder = !(config.createTempSubfolder === false);
+        const outputPath = useSubfolder ? path.join(config.tempFolder, discInfo.name) : config.tempFolder;
 
-        // Create temp folder
+        // Create temp folder or per-disc subfolder with proper permissions so it's writable even when run as sudo
         if (!fs.existsSync(outputPath)) {
             fs.mkdirSync(outputPath, { recursive: true });
+        }
+
+        // Ensure directory is writable: chown to current user and chmod to 0o777
+        // This fixes the issue where sudo creates root-owned directory that non-root can't write to
+        try {
+            // Get the user that should own this (if running as sudo, use the sudo user)
+            let targetUid = process.getuid();
+            let targetGid = process.getgid();
+
+            // If running as root (uid 0), try to get the sudo user from environment
+            if (targetUid === 0 && process.env.SUDO_UID) {
+                targetUid = parseInt(process.env.SUDO_UID);
+                targetGid = parseInt(process.env.SUDO_GID) || targetGid;
+                log(`Running as root with sudo; setting directory owner to sudo user (uid: ${targetUid}, gid: ${targetGid})`);
+            }
+
+            fs.chownSync(outputPath, targetUid, targetGid);
+            fs.chmodSync(outputPath, 0o777);
+            log(`Set ${outputPath} to uid:${targetUid}, gid:${targetGid}, mode 0o777`);
+        } catch (err) {
+            log(`Warning: Failed to set directory permissions: ${err.message}`);
         }
 
         // Determine which titles to rip
@@ -217,7 +241,7 @@ async function ripToMKV(discInfo) {
         // If no titles selected, return early with empty result
         if (selectedTitles.length === 0) {
             log('No titles meet the minimum length requirement; skipping MKV rip.');
-            resolve({ mkvFiles: [], outputPath });
+            resolve({ mkvFiles: [], outputPath, discInfo, createdSubfolder: useSubfolder });
             return;
         }
 
@@ -273,11 +297,23 @@ async function ripToMKV(discInfo) {
                 log('MKV ripping completed successfully');
 
                 // Find all MKV files created
-                const mkvFiles = fs.readdirSync(outputPath)
-                    .filter(f => f.endsWith('.mkv'))
-                    .map(f => path.join(outputPath, f));
+                try {
+                    const mkvFiles = fs.readdirSync(outputPath)
+                        .filter(f => f.endsWith('.mkv'))
+                        .map(f => path.join(outputPath, f));
 
-                resolve({ mkvFiles, outputPath });
+                    // Check if any files were actually created
+                    if (mkvFiles.length === 0) {
+                        log('Warning: MakeMKV reported success but no MKV files were created. This may indicate a read error.');
+                        reject(new Error('MakeMKV completed but failed to create any output files'));
+                        return;
+                    }
+
+                    resolve({ mkvFiles, outputPath, discInfo, createdSubfolder: useSubfolder });
+                } catch (err) {
+                    log(`Error reading output directory: ${err.message}`);
+                    reject(err);
+                }
             } else {
                 reject(new Error(`MakeMKV exited with code ${code}`));
             }
@@ -377,8 +413,8 @@ async function ripDisc() {
 
         notify('Disc Detected', `Retrieving: ${discInfo.name}`);
 
-        // Rip to MKV
-        const { mkvFiles, outputPath } = await ripToMKV(discInfo);
+    // Rip to MKV
+    const { mkvFiles, outputPath, createdSubfolder } = await ripToMKV(discInfo);
         log(`Created ${mkvFiles.length} MKV files`);
 
         // Create output folder
@@ -417,8 +453,8 @@ async function ripDisc() {
             }
         }
 
-        // Clean up temp folder
-        if (fs.existsSync(outputPath)) {
+        // Clean up temp folder (only remove per-disc subfolder, not the shared tempFolder)
+        if (createdSubfolder && fs.existsSync(outputPath)) {
             fs.rmdirSync(outputPath, { recursive: true });
         }
 
