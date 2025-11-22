@@ -92,6 +92,15 @@ cd "$SCRIPT_DIR"
 npm install node-notifier
 
 echo ""
+echo "Configuring AppArmor for MakeMKV snap..."
+if [ -f "${SCRIPT_DIR}/setup-apparmor.sh" ]; then
+    bash "${SCRIPT_DIR}/setup-apparmor.sh"
+else
+    echo "WARNING: setup-apparmor.sh not found, skipping AppArmor configuration"
+    echo "You may need to manually configure AppArmor permissions"
+fi
+
+echo ""
 echo "=== Installation Complete ==="
 echo ""
 echo "To start the service:"
