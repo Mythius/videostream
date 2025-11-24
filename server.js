@@ -76,7 +76,9 @@ try {
   }
 
   // Build the full URL from serverName
-  const url_name = config.serverName.startsWith('http')
+  // If serverName already has http:// or https://, keep it as-is
+  // Otherwise, default to http://
+  const url_name = (config.serverName.startsWith('http://') || config.serverName.startsWith('https://'))
     ? config.serverName
     : `http://${config.serverName}`;
 
@@ -590,7 +592,9 @@ app.post("/api/settings", requireAuth, express.json(), (req, res) => {
     if (passwordRequired !== undefined) config.passwordRequired = passwordRequired;
 
     // Rebuild URL
-    const url_name = config.serverName.startsWith('http')
+    // If serverName already has http:// or https://, keep it as-is
+    // Otherwise, default to http://
+    const url_name = (config.serverName.startsWith('http://') || config.serverName.startsWith('https://'))
       ? config.serverName
       : `http://${config.serverName}`;
     config.url = url_name;
