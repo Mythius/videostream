@@ -371,10 +371,11 @@ app.get("/json", (req, res) => {
       .filter((f) => f.match(".mp4"))
       .sort()
       .map((e) => {
+        const movieName = e.replace(/\.[^/.]+$/, ""); // Remove .mp4 extension
         return {
-          url: `${config.url}/movies/${encodeURI(e)}`,
+          url: `${config.url}/movies/${encodeURIComponent(movieName)}`,
           thumbnail: getImage(e),
-          title: e.replace(/\.[^/.]+$/, ""),
+          title: movieName,
         };
       });
 

@@ -254,7 +254,9 @@
         // Check authentication and redirect if needed
         async function checkAuth() {
             try {
-                const response = await fetch('/api/settings');
+                const response = await fetch('/api/settings', {
+                    credentials: 'include'
+                });
                 if (response.status === 401) {
                     // Not authenticated, redirect to login
                     // window.location.href = '/login.html?next=' + encodeURIComponent('/settings.html');
