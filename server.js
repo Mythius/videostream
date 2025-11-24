@@ -50,14 +50,17 @@ let config = {
 };
 
 try {
+  let existingConfig = null;
+
   // Try to read existing config
   if (fs.existsSync(configPath)) {
-    const existingConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    existingConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
     // Merge with defaults, keeping existing values
+    // IMPORTANT: Use ?? (nullish coalescing) or explicit checks to preserve empty strings
     config = {
       port: existingConfig.port || config.port,
-      serverName: existingConfig.serverName || null,
+      serverName: existingConfig.serverName !== undefined ? existingConfig.serverName : null,
       videoDirectory: existingConfig.videoDirectory || config.videoDirectory,
       password: existingConfig.password || config.password,
       passwordRequired: existingConfig.passwordRequired !== undefined ? existingConfig.passwordRequired : config.passwordRequired,
@@ -78,6 +81,7 @@ try {
   // Build the full URL from serverName
   // If serverName already has http:// or https://, keep it as-is
   // Otherwise, default to http://
+  console.log(`[Config] serverName before URL build: ${config.serverName}`);
   const url_name = (config.serverName.startsWith('http://') || config.serverName.startsWith('https://'))
     ? config.serverName
     : `http://${config.serverName}`;
