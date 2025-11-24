@@ -156,6 +156,11 @@ function authMiddleware(req, res, next) {
         return next();
     }
 
+    // Always allow access to /movies and /json endpoints (for Roku app)
+    if (req.path.startsWith('/movies/') || req.path === '/json') {
+        return next();
+    }
+
     // Check for password in cookie
     if (req.cookies && req.cookies[COOKIE_NAME] === config.password) {
         return next();
