@@ -27,7 +27,7 @@ function getLocalIPv4() {
 const configPath = path.join(__dirname, "config.json");
 let config = {
   port: 3000,
-  serverName: "MatthiasTV", // Display name for the server
+  serviceName: "MatthiasTV", // Name of the streaming service shown in UI
   url: null, // Will be auto-generated if not set
   videoDirectory: path.join(__dirname, "site", "videos"),
   password: "matthiasmovies", // Default password
@@ -60,7 +60,7 @@ try {
     // Merge with defaults, keeping existing values
     config = {
       port: existingConfig.port || config.port,
-      serverName: existingConfig.serverName || config.serverName,
+      serviceName: existingConfig.serviceName || config.serviceName,
       url: existingConfig.url || null,
       videoDirectory: existingConfig.videoDirectory || config.videoDirectory,
       password: existingConfig.password || config.password,
@@ -86,7 +86,7 @@ try {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   console.log(`Config written to ${configPath}`);
   console.log(`Port: ${config.port}`);
-  console.log(`Server Name: ${config.serverName}`);
+  console.log(`Service Name: ${config.serviceName}`);
   console.log(`Server URL: ${config.url}`);
   console.log(`Video Directory: ${config.videoDirectory}`);
   console.log(`Password: ${config.password}`);
@@ -337,7 +337,8 @@ app.get("/", (req, res) => {
     const finalHTML = template
       .replace("__MOVIES_PLACEHOLDER__", initialHTML)
       .replace("__MOVIES_DATA__", JSON.stringify(moviesData))
-      .replace("__SHOW_SETTINGS__", JSON.stringify(config.showSettings));
+      .replace("__SHOW_SETTINGS__", JSON.stringify(config.showSettings))
+      .replace(/__SERVICE_NAME__/g, config.serviceName);
 
     res.send(finalHTML);
   } catch (err) {
@@ -574,7 +575,7 @@ app.post("/api/upload-thumbnail", requireAuth, upload.single('thumbnail'), async
 // API: Get settings
 app.get("/api/settings", requireAuth, (req, res) => {
   res.json({
-    serverName: config.serverName,
+    serviceName: config.serviceName,
     url: config.url,
     password: config.password,
     passwordRequired: config.passwordRequired
@@ -583,10 +584,10 @@ app.get("/api/settings", requireAuth, (req, res) => {
 
 // API: Update settings
 app.post("/api/settings", requireAuth, express.json(), (req, res) => {
-  const { serverName, url, password, passwordRequired } = req.body;
+  const { serviceName, url, password, passwordRequired } = req.body;
 
   try {
-    if (serverName !== undefined) config.serverName = serverName;
+    if (serviceName !== undefined) config.serviceName = serviceName;
     if (password !== undefined) config.password = password;
     if (passwordRequired !== undefined) config.passwordRequired = passwordRequired;
 
