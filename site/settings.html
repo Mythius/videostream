@@ -270,7 +270,9 @@
         // Load movies on page load
         async function loadMovies() {
             try {
-                const response = await fetch('/api/movies-list');
+                const response = await fetch('/api/movies-list', {
+                    credentials: 'include'
+                });
                 if (response.status === 401) {
                     // window.location.href = '/login?next=' + encodeURIComponent('/settings.html');
                     return;
@@ -314,6 +316,7 @@
             try {
                 const response = await fetch('/api/rename-movie', {
                     method: 'POST',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ oldName, newName })
                 });
@@ -345,6 +348,7 @@
             try {
                 const response = await fetch('/api/upload-thumbnail', {
                     method: 'POST',
+                    credentials: 'include',
                     body: formData
                 });
 
@@ -367,7 +371,9 @@
 
         async function loadGeneralSettings() {
             try {
-                const response = await fetch('/api/settings');
+                const response = await fetch('/api/settings', {
+                    credentials: 'include'
+                });
                 if (response.status === 401) {
                     // window.location.href = '/login?next=' + encodeURIComponent('/settings.html');
                     return;
@@ -391,6 +397,7 @@
             try {
                 const response = await fetch('/api/settings', {
                     method: 'POST',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(settings)
                 });
