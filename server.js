@@ -152,6 +152,7 @@ function authMiddleware(req, res, next) {
     // Always allow access to login page and static assets
     if (req.path === '/login.html' ||
         req.path.startsWith('/clapboard.jpg') ||
+        req.path.startsWith('/imgs/') ||
         req.path.match(/\.(css|js|png|jpg|jpeg|gif|ico|woff|woff2|ttf)$/)) {
         return next();
     }
