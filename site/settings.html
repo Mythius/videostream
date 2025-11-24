@@ -222,8 +222,14 @@
         <div class="section">
             <h2>General Settings</h2>
             <div class="form-group">
-                <label for="serverName">Server Name</label>
-                <input type="text" id="serverName" placeholder="e.g., 192.168.1.100:3000">
+                <label for="serverName">Server Display Name</label>
+                <input type="text" id="serverName" placeholder="e.g., MatthiasTV">
+                <small style="color: rgba(255, 255, 255, 0.6); display: block; margin-top: 5px;">Friendly name for your server</small>
+            </div>
+            <div class="form-group">
+                <label for="url">Server URL</label>
+                <input type="text" id="url" placeholder="e.g., https://media.msouthwick.com">
+                <small style="color: rgba(255, 255, 255, 0.6); display: block; margin-top: 5px;">Full URL where the server is accessible (with http:// or https://)</small>
             </div>
             <div class="form-group">
                 <label for="password">Password</label>
@@ -382,6 +388,7 @@
                 }
                 const settings = await response.json();
                 document.getElementById('serverName').value = settings.serverName || '';
+                document.getElementById('url').value = settings.url || '';
                 document.getElementById('password').value = settings.password || '';
                 document.getElementById('passwordRequired').checked = settings.passwordRequired || false;
             } catch (error) {
@@ -392,6 +399,7 @@
         async function saveGeneralSettings() {
             const settings = {
                 serverName: document.getElementById('serverName').value,
+                url: document.getElementById('url').value,
                 password: document.getElementById('password').value,
                 passwordRequired: document.getElementById('passwordRequired').checked
             };

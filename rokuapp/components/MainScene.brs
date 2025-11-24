@@ -49,6 +49,8 @@ sub onContentLoaded()
             item.Title = movie.title
             item.hdPosterUrl = movie.thumbnail
             item.HDPosterUrl = movie.thumbnail
+            item.sdPosterUrl = movie.thumbnail
+            item.FHDPosterUrl = movie.thumbnail
             item.StreamFormat = "mp4"
             item.url = movie.url  ' This can be read later for playback
             contentNode.appendChild(item)

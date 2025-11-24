@@ -27,7 +27,8 @@ function getLocalIPv4() {
 const configPath = path.join(__dirname, "config.json");
 let config = {
   port: 3000,
-  serverName: null, // Will be set below based on port
+  serverName: "MatthiasTV", // Display name for the server
+  url: null, // Will be auto-generated if not set
   videoDirectory: path.join(__dirname, "site", "videos"),
   password: "matthiasmovies", // Default password
   passwordRequired: false, // Set to true to enable password protection
@@ -57,10 +58,10 @@ try {
     existingConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
     // Merge with defaults, keeping existing values
-    // IMPORTANT: Use ?? (nullish coalescing) or explicit checks to preserve empty strings
     config = {
       port: existingConfig.port || config.port,
-      serverName: existingConfig.serverName !== undefined ? existingConfig.serverName : null,
+      serverName: existingConfig.serverName || config.serverName,
+      url: existingConfig.url || null,
       videoDirectory: existingConfig.videoDirectory || config.videoDirectory,
       password: existingConfig.password || config.password,
       passwordRequired: existingConfig.passwordRequired !== undefined ? existingConfig.passwordRequired : config.passwordRequired,
@@ -69,24 +70,17 @@ try {
     };
   }
 
-  // Get the local IP and create the default server name with port
-  const localIP = getLocalIPv4();
-  const defaultServerName = `${localIP}:${config.port}`;
-
-  // Set serverName if not already set
-  if (!config.serverName) {
-    config.serverName = defaultServerName;
+  // Auto-generate URL if not set
+  // If url is not set, create it from local IP and port
+  if (!config.url) {
+    const localIP = getLocalIPv4();
+    config.url = `http://${localIP}:${config.port}`;
   }
 
-  // Build the full URL from serverName
-  // If serverName already has http:// or https://, keep it as-is
-  // Otherwise, default to http://
-  console.log(`[Config] serverName before URL build: ${config.serverName}`);
-  const url_name = (config.serverName.startsWith('http://') || config.serverName.startsWith('https://'))
-    ? config.serverName
-    : `http://${config.serverName}`;
-
-  config.url = url_name; // For backwards compatibility
+  // Ensure URL has protocol (http:// or https://)
+  if (!config.url.startsWith('http://') && !config.url.startsWith('https://')) {
+    config.url = `http://${config.url}`;
+  }
 
   // Write updated config
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -581,6 +575,7 @@ app.post("/api/upload-thumbnail", requireAuth, upload.single('thumbnail'), async
 app.get("/api/settings", requireAuth, (req, res) => {
   res.json({
     serverName: config.serverName,
+    url: config.url,
     password: config.password,
     passwordRequired: config.passwordRequired
   });
@@ -588,20 +583,21 @@ app.get("/api/settings", requireAuth, (req, res) => {
 
 // API: Update settings
 app.post("/api/settings", requireAuth, express.json(), (req, res) => {
-  const { serverName, password, passwordRequired } = req.body;
+  const { serverName, url, password, passwordRequired } = req.body;
 
   try {
     if (serverName !== undefined) config.serverName = serverName;
     if (password !== undefined) config.password = password;
     if (passwordRequired !== undefined) config.passwordRequired = passwordRequired;
 
-    // Rebuild URL
-    // If serverName already has http:// or https://, keep it as-is
-    // Otherwise, default to http://
-    const url_name = (config.serverName.startsWith('http://') || config.serverName.startsWith('https://'))
-      ? config.serverName
-      : `http://${config.serverName}`;
-    config.url = url_name;
+    // Update URL if provided
+    if (url !== undefined) {
+      config.url = url;
+      // Ensure URL has protocol (http:// or https://)
+      if (!config.url.startsWith('http://') && !config.url.startsWith('https://')) {
+        config.url = `http://${config.url}`;
+      }
+    }
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
