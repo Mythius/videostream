@@ -1,6 +1,6 @@
 sub init()
     'CONFIGURE THIS
-    URL = "http://192.168.0.153"
+    URL = "https://media.msouthwick.com"
     'END CONFIG
 
     print "==> MainScene: init()"
@@ -47,11 +47,12 @@ sub onContentLoaded()
         if movie.title <> invalid and movie.url <> invalid and movie.thumbnail <> invalid
             item = createObject("roSGNode", "ContentNode")
             item.Title = movie.title
+            item.hdPosterUrl = movie.thumbnail
             item.HDPosterUrl = movie.thumbnail
             item.StreamFormat = "mp4"
             item.url = movie.url  ' This can be read later for playback
             contentNode.appendChild(item)
-            print "==> Added node: "; movie.title
+            print "==> Added node: "; movie.title; " with thumbnail: "; movie.thumbnail
         end if
     end for
 

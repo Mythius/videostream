@@ -9,6 +9,7 @@
             numColumns="4"
             numRows="3"
             focusable="true"
+            basePosterSize="[250, 150]"
         />
         <Video
             id="videoPlayer"
