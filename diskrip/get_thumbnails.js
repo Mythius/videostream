@@ -124,21 +124,17 @@ function downloadImage(url, outputPath) {
 }
 
 /**
- * Convert image to PNG and crop to 3:2 aspect ratio using ImageMagick/ffmpeg
+ * Convert image to PNG with 2:3 aspect ratio (portrait) using ImageMagick/ffmpeg
+ * Preserves the original aspect ratio without cropping
  */
 async function convertAndCropImage(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
     // Try using ImageMagick's convert command first
-    // The poster images are typically portrait (2:3), we want to crop to 3:2 landscape
-    // We'll take the top center portion
+    // The poster images are typically portrait (2:3), we want to preserve that
     const convertArgs = [
       inputPath,
       "-resize",
-      "900x600^", // Resize to fit 3:2 ratio (900x600)
-      "-gravity",
-      "north", // Top center crop
-      "-extent",
-      "900x600", // Crop to exact 3:2 ratio
+      "600x900", // Resize to fit 2:3 ratio (600x900) while preserving aspect ratio
       outputPath,
     ];
 
@@ -152,7 +148,7 @@ async function convertAndCropImage(inputPath, outputPath) {
         "-i",
         inputPath,
         "-vf",
-        "scale=900:600:force_original_aspect_ratio=increase,crop=900:600",
+        "scale=600:900:force_original_aspect_ratio=decrease",
         "-y",
         outputPath,
       ];
@@ -208,7 +204,7 @@ async function processThumbnail(movieName) {
     log(`Downloading poster for "${movieName}"...`);
     await downloadImage(posterUrl, tempFile);
 
-    log(`Converting and cropping "${movieName}"...`);
+    log(`Converting "${movieName}"...`);
     await convertAndCropImage(tempFile, finalFile);
 
     // Clean up temp file
