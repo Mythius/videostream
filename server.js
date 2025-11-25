@@ -606,6 +606,297 @@ app.post("/api/settings", requireAuth, express.json(), (req, res) => {
   }
 });
 
+// API: Scan for Roku devices on the network
+app.get("/api/roku/scan", requireAuth, async (req, res) => {
+  try {
+    const devices = await scanForRokuDevices();
+    res.json(devices);
+  } catch (error) {
+    console.error("Error scanning for Roku devices:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Deploy Roku app
+app.post("/api/roku/deploy", requireAuth, express.json(), async (req, res) => {
+  const { ip, username, password } = req.body;
+
+  if (!ip || !username || !password) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  try {
+    await buildAndDeployRokuApp(ip, username, password);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deploying Roku app:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Function to scan for Roku devices using multiple methods
+async function scanForRokuDevices() {
+  const devices = [];
+  const seen = new Set();
+
+  // Helper function to check if an IP has a Roku device
+  const checkRokuAtIP = async (ip) => {
+    return new Promise((resolve) => {
+      const http = require('http');
+      const req = http.get({
+        hostname: ip,
+        port: 8060,
+        path: '/query/device-info',
+        timeout: 1000
+      }, (resp) => {
+        let data = '';
+        resp.on('data', (chunk) => { data += chunk; });
+        resp.on('end', () => {
+          if (data.includes('Roku') || data.includes('roku')) {
+            const nameMatch = data.match(/<friendly-device-name>(.*?)<\/friendly-device-name>/);
+            const modelMatch = data.match(/<model-name>(.*?)<\/model-name>/);
+            const name = nameMatch ? nameMatch[1] : (modelMatch ? modelMatch[1] : 'Roku Device');
+            resolve({ ip, name });
+          } else {
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(null);
+      });
+    });
+  };
+
+  // Method 1: SSDP Discovery
+  const ssdpDevices = await new Promise((resolve) => {
+    const dgram = require('dgram');
+    const socket = dgram.createSocket('udp4');
+    const found = [];
+
+    const SSDP_ADDR = '239.255.255.250';
+    const SSDP_PORT = 1900;
+    const searchMessage = Buffer.from([
+      'M-SEARCH * HTTP/1.1',
+      'HOST: 239.255.255.250:1900',
+      'MAN: "ssdp:discover"',
+      'MX: 3',
+      'ST: roku:ecp',
+      '',
+      ''
+    ].join('\r\n'));
+
+    socket.on('message', (msg, rinfo) => {
+      const message = msg.toString();
+      if ((message.includes('Roku') || message.includes('roku')) && !seen.has(rinfo.address)) {
+        seen.add(rinfo.address);
+        found.push(rinfo.address);
+      }
+    });
+
+    socket.on('error', () => {
+      socket.close();
+      resolve([]);
+    });
+
+    try {
+      socket.bind(() => {
+        socket.send(searchMessage, 0, searchMessage.length, SSDP_PORT, SSDP_ADDR);
+      });
+    } catch (err) {
+      resolve([]);
+    }
+
+    setTimeout(() => {
+      socket.close();
+      resolve(found);
+    }, 2000);
+  });
+
+  // Method 2: Local network scan
+  const getLocalSubnet = () => {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          const parts = iface.address.split('.');
+          return `${parts[0]}.${parts[1]}.${parts[2]}`;
+        }
+      }
+    }
+    return null;
+  };
+
+  const subnet = getLocalSubnet();
+  const scanIPs = [];
+
+  // Scan common IP ranges in the local subnet
+  if (subnet) {
+    // Scan a limited range for performance (typically home routers use .1-.254)
+    // We'll scan in chunks to avoid overwhelming the network
+    const ranges = [
+      [1, 50],    // Common router/device range
+      [100, 150], // Common DHCP range
+      [200, 254]  // Upper DHCP range
+    ];
+
+    for (const [start, end] of ranges) {
+      for (let i = start; i <= end; i++) {
+        scanIPs.push(`${subnet}.${i}`);
+      }
+    }
+  }
+
+  // Check SSDP discovered IPs first
+  console.log(`Found ${ssdpDevices.length} devices via SSDP`);
+  for (const ip of ssdpDevices) {
+    const device = await checkRokuAtIP(ip);
+    if (device && !seen.has(device.ip)) {
+      seen.add(device.ip);
+      devices.push(device);
+    }
+  }
+
+  // Then do network scan (in parallel batches for speed)
+  console.log(`Scanning ${scanIPs.length} IPs on local network...`);
+  const batchSize = 50;
+  for (let i = 0; i < scanIPs.length; i += batchSize) {
+    const batch = scanIPs.slice(i, i + batchSize);
+    const results = await Promise.all(batch.map(checkRokuAtIP));
+
+    for (const device of results) {
+      if (device && !seen.has(device.ip)) {
+        seen.add(device.ip);
+        devices.push(device);
+        console.log(`Found Roku device: ${device.name} at ${device.ip}`);
+      }
+    }
+
+    // If we've found devices, we can stop scanning
+    if (devices.length > 0 && i > batchSize * 2) {
+      console.log(`Found ${devices.length} device(s), stopping scan early`);
+      break;
+    }
+  }
+
+  console.log(`Total Roku devices found: ${devices.length}`);
+  return devices;
+}
+
+// Function to build and deploy Roku app
+async function buildAndDeployRokuApp(rokuIp, username, password) {
+  return new Promise((resolve, reject) => {
+    const AdmZip = require('adm-zip');
+    const archiver = require('archiver');
+    const FormData = require('form-data');
+    const http = require('http');
+
+    // Create zip of rokuapp directory
+    const zipPath = path.join(__dirname, 'rokuapp.zip');
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    output.on('close', () => {
+      console.log(`Roku app package created: ${archive.pointer()} bytes`);
+
+      // Update MainScene.brs with current URL before deploying
+      const mainScenePath = path.join(__dirname, 'rokuapp', 'components', 'MainScene.brs');
+      let mainSceneContent = fs.readFileSync(mainScenePath, 'utf8');
+
+      // Replace URL in the config section
+      mainSceneContent = mainSceneContent.replace(
+        /URL = ".*?"/,
+        `URL = "${config.url}"`
+      );
+
+      // Write to temp location
+      const tempMainScenePath = path.join(__dirname, 'MainScene.brs.tmp');
+      fs.writeFileSync(tempMainScenePath, mainSceneContent);
+
+      // Recreate zip with updated file
+      const output2 = fs.createWriteStream(zipPath);
+      const archive2 = archiver('zip', { zlib: { level: 9 } });
+
+      output2.on('close', () => {
+        // Deploy to Roku
+        const form = new FormData();
+        form.append('mysubmit', 'Replace');
+        form.append('archive', fs.createReadStream(zipPath));
+
+        const auth = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
+
+        const options = {
+          hostname: rokuIp,
+          port: 80,
+          path: '/plugin_install',
+          method: 'POST',
+          headers: {
+            ...form.getHeaders(),
+            'Authorization': auth
+          }
+        };
+
+        const req = http.request(options, (res) => {
+          let data = '';
+          res.on('data', (chunk) => { data += chunk; });
+          res.on('end', () => {
+            // Clean up
+            fs.unlinkSync(zipPath);
+            fs.unlinkSync(tempMainScenePath);
+
+            if (res.statusCode === 200) {
+              console.log('Roku app deployed successfully');
+              resolve();
+            } else {
+              reject(new Error(`Deployment failed with status ${res.statusCode}`));
+            }
+          });
+        });
+
+        req.on('error', (error) => {
+          fs.unlinkSync(zipPath);
+          fs.unlinkSync(tempMainScenePath);
+          reject(error);
+        });
+
+        form.pipe(req);
+      });
+
+      archive2.on('error', (err) => {
+        reject(err);
+      });
+
+      archive2.pipe(output2);
+
+      // Add all roku app files with updated MainScene.brs
+      archive2.directory(path.join(__dirname, 'rokuapp', 'components'), 'components', {
+        ignore: ['MainScene.brs']
+      });
+      archive2.file(tempMainScenePath, { name: 'components/MainScene.brs' });
+      archive2.directory(path.join(__dirname, 'rokuapp', 'source'), 'source');
+
+      // Add manifest
+      const manifestPath = path.join(__dirname, 'rokuapp', 'manifest');
+      if (fs.existsSync(manifestPath)) {
+        archive2.file(manifestPath, { name: 'manifest' });
+      }
+
+      archive2.finalize();
+    });
+
+    archive.on('error', (err) => {
+      reject(err);
+    });
+
+    archive.pipe(output);
+    archive.directory(path.join(__dirname, 'rokuapp'), false);
+    archive.finalize();
+  });
+}
+
 http.listen(port, () => {
   console.log(`Serving http://localhost${port == 80 ? "" : `:${port}`}`);
 
