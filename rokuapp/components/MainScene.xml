@@ -3,13 +3,15 @@
     <children>
         <PosterGrid
             id="posterGrid"
-            itemSize="[250, 150]"
+            itemSize="[150, 275]"
             translation="[80,50]"
             itemSpacing="[40, 40]"
             numColumns="4"
             numRows="3"
             focusable="true"
-            basePosterSize="[250, 150]"
+            basePosterSize="[150, 225]"
+            posterDisplayMode="scaleToFit"
+            caption1NumLines="2"
         />
         <Video
             id="videoPlayer"

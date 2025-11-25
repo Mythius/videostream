@@ -47,6 +47,7 @@ sub onContentLoaded()
         if movie.title <> invalid and movie.url <> invalid and movie.thumbnail <> invalid
             item = createObject("roSGNode", "ContentNode")
             item.Title = movie.title
+            item.ShortDescriptionLine1 = movie.title  ' This displays as caption below poster
             item.hdPosterUrl = movie.thumbnail
             item.HDPosterUrl = movie.thumbnail
             item.sdPosterUrl = movie.thumbnail
@@ -114,7 +115,15 @@ function onKeyEvent(key, press) as Boolean
 
     print "==> Key pressed: "; key
 
-    if key = "OK" or key = "Play"
+    if key = "back"
+        ' Stop video and return to grid
+        print "==> Back button pressed - returning to grid"
+        m.video.control = "stop"
+        m.video.visible = false
+        m.grid.visible = true
+        m.grid.setFocus(true)
+        return true
+    else if key = "OK" or key = "Play"
         print "==> Video state: "; m.video.state
         if m.video.state = "playing"
             m.video.control = "pause"
