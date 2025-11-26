@@ -4,7 +4,7 @@
         <PosterGrid
             id="posterGrid"
             itemSize="[220, 380]"
-            translation="[30,50]"
+            translation="[40,50]"
             itemSpacing="[20, 30]"
             numColumns="5"
             numRows="3"
