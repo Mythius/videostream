@@ -691,8 +691,7 @@ async function scanForRokuDevices() {
 
     socket.on('message', (msg, rinfo) => {
       const message = msg.toString();
-      if ((message.includes('Roku') || message.includes('roku')) && !seen.has(rinfo.address)) {
-        seen.add(rinfo.address);
+      if ((message.includes('Roku') || message.includes('roku')) && !found.includes(rinfo.address)) {
         found.push(rinfo.address);
       }
     });
