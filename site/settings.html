@@ -582,15 +582,15 @@
 
             movieList.innerHTML = movies.map(movie => `
                 <div class="movie-item">
-                    <img src="${movie.thumbnail}" alt="${movie.title}" onerror="this.src='/clapboard.jpg'">
+                    <img src="${movie.thumbnail}" alt="${escapeHtml(movie.title)}" onerror="this.src='/clapboard.jpg'">
                     <div class="movie-info">
-                        <div class="movie-name">${movie.title}</div>
+                        <div class="movie-name">${escapeHtml(movie.title)}</div>
                     </div>
                     <div class="movie-actions">
-                        <button class="btn small-btn" onclick="renameMovie('${movie.title}')">Rename</button>
+                        <button class="btn small-btn" onclick="renameMovie(${JSON.stringify(movie.title)})">Rename</button>
                         <label class="upload-label">
                             Upload Thumbnail
-                            <input type="file" class="file-upload" accept="image/*" onchange="uploadThumbnail('${movie.title}', this.files[0])">
+                            <input type="file" class="file-upload" accept="image/*" onchange="uploadThumbnail(${JSON.stringify(movie.title)}, this.files[0])">
                         </label>
                     </div>
                 </div>
