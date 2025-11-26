@@ -76,11 +76,9 @@
   },
   "homepage": "https://github.com/mythius/mylib#readme",
   "dependencies": {
-    "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
     "cookie-parser": "^1.4.7",
     "express": "^5.1.0",
-    "form-data": "^4.0.5",
     "multer": "^2.0.2",
     "node-notifier": "^10.0.1",
     "qrcode": "^1.5.4",

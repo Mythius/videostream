@@ -788,10 +788,7 @@ async function scanForRokuDevices() {
 // Function to build and deploy Roku app
 async function buildAndDeployRokuApp(rokuIp, username, password) {
   return new Promise((resolve, reject) => {
-    const AdmZip = require('adm-zip');
     const archiver = require('archiver');
-    const FormData = require('form-data');
-    const http = require('http');
 
     // Create zip of rokuapp directory
     const zipPath = path.join(__dirname, 'rokuapp.zip');
@@ -819,49 +816,51 @@ async function buildAndDeployRokuApp(rokuIp, username, password) {
       const output2 = fs.createWriteStream(zipPath);
       const archive2 = archiver('zip', { zlib: { level: 9 } });
 
-      output2.on('close', () => {
-        // Deploy to Roku
-        const form = new FormData();
-        form.append('mysubmit', 'Replace');
-        form.append('archive', fs.createReadStream(zipPath));
+      output2.on('close', async () => {
+        // Deploy to Roku using curl (handles Digest auth automatically)
+        const { spawn } = require('child_process');
 
-        const auth = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
+        const curlArgs = [
+          '--digest',
+          '-u', `${username}:${password}`,
+          '-F', 'mysubmit=Replace',
+          '-F', `archive=@${zipPath}`,
+          `http://${rokuIp}/plugin_install`
+        ];
 
-        const options = {
-          hostname: rokuIp,
-          port: 80,
-          path: '/plugin_install',
-          method: 'POST',
-          headers: {
-            ...form.getHeaders(),
-            'Authorization': auth
+        const curl = spawn('curl', curlArgs);
+        let output = '';
+        let errorOutput = '';
+
+        curl.stdout.on('data', (data) => {
+          output += data.toString();
+        });
+
+        curl.stderr.on('data', (data) => {
+          errorOutput += data.toString();
+        });
+
+        curl.on('close', (code) => {
+          // Clean up
+          if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+          if (fs.existsSync(tempMainScenePath)) fs.unlinkSync(tempMainScenePath);
+
+          if (code === 0) {
+            console.log('Roku app deployed successfully');
+            console.log('Response:', output);
+            resolve();
+          } else {
+            console.error('curl stderr:', errorOutput);
+            reject(new Error(`Deployment failed with exit code ${code}: ${errorOutput}`));
           }
-        };
-
-        const req = http.request(options, (res) => {
-          let data = '';
-          res.on('data', (chunk) => { data += chunk; });
-          res.on('end', () => {
-            // Clean up
-            fs.unlinkSync(zipPath);
-            fs.unlinkSync(tempMainScenePath);
-
-            if (res.statusCode === 200) {
-              console.log('Roku app deployed successfully');
-              resolve();
-            } else {
-              reject(new Error(`Deployment failed with status ${res.statusCode}`));
-            }
-          });
         });
 
-        req.on('error', (error) => {
-          fs.unlinkSync(zipPath);
-          fs.unlinkSync(tempMainScenePath);
-          reject(error);
+        curl.on('error', (error) => {
+          // Clean up on error
+          if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+          if (fs.existsSync(tempMainScenePath)) fs.unlinkSync(tempMainScenePath);
+          reject(new Error(`Failed to execute curl: ${error.message}`));
         });
-
-        form.pipe(req);
       });
 
       archive2.on('error', (err) => {
