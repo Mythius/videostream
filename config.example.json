@@ -5,7 +5,7 @@
   "videoDirectory": "/path/to/your/videos",
   "password": "yourpassword",
   "passwordRequired": false,
-  "showSettings": false,
+  "showSettings": true,
   "diskrip": {
     "tempFolder": "/tmp/ripdisk",
     "diskDevice": "/dev/sr0",

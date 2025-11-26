@@ -32,7 +32,7 @@ let config = {
   videoDirectory: path.join(__dirname, "site", "videos"),
   password: "matthiasmovies", // Default password
   passwordRequired: false, // Set to true to enable password protection
-  showSettings: false, // Set to true to show settings page
+  showSettings: true, // Set to true to show settings page
   diskrip: {
     tempFolder: "/tmp/ripdisk",
     diskDevice: "/dev/sr0",
