@@ -587,21 +587,38 @@
                 return;
             }
 
-            movieList.innerHTML = movies.map(movie => `
+            movieList.innerHTML = movies.map((movie, index) => `
                 <div class="movie-item">
                     <img src="${movie.thumbnail}" alt="${escapeHtml(movie.title)}" onerror="this.src='/clapboard.jpg'">
                     <div class="movie-info">
                         <div class="movie-name">${escapeHtml(movie.title)}</div>
                     </div>
                     <div class="movie-actions">
-                        <button class="btn small-btn" onclick="renameMovie(${JSON.stringify(movie.title)})">Rename</button>
+                        <button class="btn small-btn" data-movie-index="${index}">Rename</button>
                         <label class="upload-label">
                             Upload Thumbnail
-                            <input type="file" class="file-upload" accept="image/*" onchange="uploadThumbnail(${JSON.stringify(movie.title)}, this.files[0])">
+                            <input type="file" class="file-upload" accept="image/*" data-movie-index="${index}">
                         </label>
                     </div>
                 </div>
             `).join('');
+
+            // Attach event listeners after rendering
+            document.querySelectorAll('.movie-item button[data-movie-index]').forEach(button => {
+                button.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-movie-index'));
+                    renameMovie(movies[index].title);
+                });
+            });
+
+            document.querySelectorAll('.movie-item .file-upload[data-movie-index]').forEach(input => {
+                input.addEventListener('change', function() {
+                    const index = parseInt(this.getAttribute('data-movie-index'));
+                    if (this.files[0]) {
+                        uploadThumbnail(movies[index].title, this.files[0]);
+                    }
+                });
+            });
         }
 
         async function renameMovie(oldName) {
