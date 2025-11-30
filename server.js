@@ -26,7 +26,7 @@ function getLocalIPv4() {
 // Read or create config.json
 const configPath = path.join(__dirname, "config.json");
 let config = {
-  port: 3000,
+  port: 80,
   serviceName: "MatthiasTV", // Name of the streaming service shown in UI
   url: null, // Will be auto-generated if not set
   videoDirectory: path.join(__dirname, "site", "videos"),
