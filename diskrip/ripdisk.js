@@ -356,6 +356,8 @@ async function ripToMKV(discInfo) {
         });
 
         let output = '';
+        let errorOutput = '';
+        let hasReadErrors = false;
 
         makemkv.stdout.on('data', (data) => {
             const text = data.toString();
@@ -375,10 +377,30 @@ async function ripToMKV(discInfo) {
             if (msgMatch) {
                 log(`MakeMKV: ${msgMatch[3]}`);
             }
+
+            // Detect read errors (scratched disc, bad sectors, etc.)
+            if (text.includes('Posix error') ||
+                text.includes('No such device') ||
+                text.includes('Read error') ||
+                text.includes('Scsi error') ||
+                text.includes('failed to read')) {
+                hasReadErrors = true;
+                errorOutput += text;
+            }
         });
 
         makemkv.stderr.on('data', (data) => {
-            log(`MakeMKV Error: ${data}`);
+            const text = data.toString();
+            errorOutput += text;
+            log(`MakeMKV Error: ${text}`);
+
+            // Also check stderr for read errors
+            if (text.includes('Posix error') ||
+                text.includes('No such device') ||
+                text.includes('Read error') ||
+                text.includes('Scsi error')) {
+                hasReadErrors = true;
+            }
         });
 
         makemkv.on('close', (code) => {
@@ -406,41 +428,62 @@ async function ripToMKV(discInfo) {
             } else {
                 log(`ERROR: MakeMKV exited with code ${code}`);
 
-                // Log comprehensive diagnostic information
-                log('=== Diagnostic Information ===');
-                log(`Output directory: ${outputPath}`);
+                // Provide user-friendly error message based on error type
+                let userMessage = 'MakeMKV failed to rip the disc';
 
-                // Try to list directory contents and permissions
-                try {
-                    log('Attempting to list directory contents...');
-                    execPromise(`ls -la ${outputPath}`).then(lsOutput => {
-                        log(`Directory listing:\n${lsOutput}`);
-                    }).catch(lsErr => {
-                        log(`Failed to list directory: ${lsErr.message}`);
-                    });
-                } catch (e) {
-                    log(`Failed to execute ls command: ${e.message}`);
+                if (hasReadErrors) {
+                    log('=== DISC READ ERROR DETECTED ===');
+                    log('The disc appears to be scratched, damaged, or unreadable.');
+                    log('Common causes:');
+                    log('  - Scratches or fingerprints on the disc surface');
+                    log('  - Damaged or degraded disc (disc rot)');
+                    log('  - Incompatible or region-locked disc');
+                    log('  - Dirty or faulty optical drive');
+                    log('');
+                    log('Suggestions:');
+                    log('  1. Clean the disc gently with a soft cloth (wipe from center outward)');
+                    log('  2. Try the disc in a different drive if available');
+                    log('  3. Check if the disc plays normally in a DVD/Blu-ray player');
+                    log('  4. Clean the optical drive lens');
+
+                    userMessage = 'Unable to read disc - the disc may be scratched, damaged, or dirty. Please clean the disc and try again.';
+                } else {
+                    // Generic error - show diagnostic information
+                    log('=== Diagnostic Information ===');
+                    log(`Output directory: ${outputPath}`);
+
+                    // Try to list directory contents and permissions
+                    try {
+                        log('Attempting to list directory contents...');
+                        execPromise(`ls -la ${outputPath}`).then(lsOutput => {
+                            log(`Directory listing:\n${lsOutput}`);
+                        }).catch(lsErr => {
+                            log(`Failed to list directory: ${lsErr.message}`);
+                        });
+                    } catch (e) {
+                        log(`Failed to execute ls command: ${e.message}`);
+                    }
+
+                    // Log directory permissions
+                    try {
+                        const stat = fs.statSync(outputPath);
+                        log(`Directory permissions: uid=${stat.uid}, gid=${stat.gid}, mode=${stat.mode.toString(8)}`);
+                    } catch (statErr) {
+                        log(`Failed to stat directory: ${statErr.message}`);
+                    }
+
+                    // Log current process info
+                    log(`Current process: uid=${process.getuid()}, gid=${process.getgid()}`);
+
+                    // Log suggestions
+                    log('=== Troubleshooting Suggestions ===');
+                    log('1. Ensure the directory has proper permissions (chmod 777)');
+                    log('2. Check if the disk has enough free space');
+                    log('3. Verify MakeMKV can access the disc drive');
+                    log('4. Check system logs for more details: journalctl -u ripdisk -n 50');
                 }
 
-                // Log directory permissions
-                try {
-                    const stat = fs.statSync(outputPath);
-                    log(`Directory permissions: uid=${stat.uid}, gid=${stat.gid}, mode=${stat.mode.toString(8)}`);
-                } catch (statErr) {
-                    log(`Failed to stat directory: ${statErr.message}`);
-                }
-
-                // Log current process info
-                log(`Current process: uid=${process.getuid()}, gid=${process.getgid()}`);
-
-                // Log suggestions
-                log('=== Troubleshooting Suggestions ===');
-                log('1. Ensure the directory has proper permissions (chmod 777)');
-                log('2. Check if the disk has enough free space');
-                log('3. Verify MakeMKV can access the disc drive');
-                log('4. Check system logs for more details: journalctl -u ripdisk -n 50');
-
-                reject(new Error(`MakeMKV exited with code ${code}`));
+                reject(new Error(userMessage));
             }
         });
     });
