@@ -177,7 +177,7 @@ app.use(authMiddleware);
 
 // Middleware to block settings page if showSettings is false
 app.use((req, res, next) => {
-  if (!config.showSettings && (req.path === '/settings.html' || req.path.startsWith('/api/settings') || req.path.startsWith('/api/movies-list') || req.path.startsWith('/api/rename-movie') || req.path.startsWith('/api/upload-thumbnail'))) {
+  if (!config.showSettings && (req.path === '/settings.html' || req.path.startsWith('/api/settings') || req.path.startsWith('/api/movies-list') || req.path.startsWith('/api/rename-movie') || req.path.startsWith('/api/upload-thumbnail') || req.path.startsWith('/api/ripper-settings'))) {
     return res.status(403).send('Settings page is disabled. Set showSettings to true in config.json to enable.');
   }
   next();
@@ -603,6 +603,38 @@ app.post("/api/settings", requireAuth, express.json(), (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Error updating settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Get ripper settings
+app.get("/api/ripper-settings", requireAuth, (req, res) => {
+  res.json({
+    titlesToRip: config.diskrip.titlesToRip,
+    minTitleLength: config.diskrip.minTitleLength,
+    autoEject: config.diskrip.autoEject,
+    notifyOnComplete: config.diskrip.notifyOnComplete,
+    keepMKV: config.diskrip.keepMKV
+  });
+});
+
+// API: Update ripper settings
+app.post("/api/ripper-settings", requireAuth, express.json(), (req, res) => {
+  const { titlesToRip, minTitleLength, autoEject, notifyOnComplete, keepMKV } = req.body;
+
+  try {
+    if (titlesToRip !== undefined) config.diskrip.titlesToRip = titlesToRip;
+    if (minTitleLength !== undefined) config.diskrip.minTitleLength = minTitleLength;
+    if (autoEject !== undefined) config.diskrip.autoEject = autoEject;
+    if (notifyOnComplete !== undefined) config.diskrip.notifyOnComplete = notifyOnComplete;
+    if (keepMKV !== undefined) config.diskrip.keepMKV = keepMKV;
+
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+    console.log("Ripper settings updated");
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error updating ripper settings:", error);
     res.status(500).json({ error: error.message });
   }
 });

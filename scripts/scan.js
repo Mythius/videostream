@@ -66,26 +66,29 @@ function checkMediaServer(ip, port) {
             });
 
             res.on('end', () => {
+                // Only report HTTP 200 responses
+                if (res.statusCode !== 200) {
+                    resolve(null);
+                    return;
+                }
+
                 // Check if this looks like a media server
+                const dataLower = data.toLowerCase();
                 const isMediaServer =
-                    data.toLowerCase().includes('matthiastv') ||
-                    data.toLowerCase().includes('video') ||
-                    data.toLowerCase().includes('movie') ||
-                    data.toLowerCase().includes('stream') ||
+                    dataLower.includes('matthiastv') ||
+                    dataLower.includes('video') ||
+                    dataLower.includes('movie') ||
+                    dataLower.includes('stream') ||
                     res.headers['x-powered-by']?.includes('Express');
 
-                if (isMediaServer || res.statusCode === 200) {
-                    resolve({
-                        ip,
-                        port,
-                        statusCode: res.statusCode,
-                        headers: res.headers,
-                        snippet: data.substring(0, 200),
-                        confidence: isMediaServer ? 'high' : 'medium'
-                    });
-                } else {
-                    resolve(null);
-                }
+                resolve({
+                    ip,
+                    port,
+                    statusCode: res.statusCode,
+                    headers: res.headers,
+                    snippet: data.substring(0, 200),
+                    confidence: isMediaServer ? 'high' : 'medium'
+                });
             });
         });
 
@@ -124,7 +127,8 @@ async function scanIP(ip) {
 async function scanBatch(ips) {
     const promises = ips.map(ip => scanIP(ip));
     const results = await Promise.all(promises);
-    return results.flat().filter(r => r !== null && r.length > 0);
+    // Filter out null results and flatten the array
+    return results.flat().filter(r => r !== null);
 }
 
 /**

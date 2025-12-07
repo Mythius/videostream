@@ -335,6 +335,7 @@
         <div class="tabs">
             <button class="tab active" onclick="switchTab('general')">General</button>
             <button class="tab" onclick="switchTab('movies')">Movies</button>
+            <button class="tab" onclick="switchTab('ripper')">Disc Ripper</button>
             <button class="tab" onclick="switchTab('roku')">Roku</button>
         </div>
 
@@ -374,6 +375,53 @@
             <div class="movie-list" id="movieList">
                 <p style="text-align: center; color: rgba(255, 255, 255, 0.5);">Loading movies...</p>
             </div>
+        </div>
+        </div>
+
+        <!-- Disc Ripper Tab -->
+        <div id="ripper-tab" class="tab-content">
+        <div class="section">
+            <h2>Disc Ripper Settings</h2>
+
+            <div class="form-group">
+                <label for="titlesToRip">Number of Titles to Rip</label>
+                <input type="number" id="titlesToRip" min="1" max="10" placeholder="1">
+                <small style="color: rgba(255, 255, 255, 0.6); display: block; margin-top: 5px;">
+                    How many titles to rip from each disc (sorted by length, longest first). Most movies have 1 main title.
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label for="minTitleLength">Minimum Title Length (seconds)</label>
+                <input type="number" id="minTitleLength" min="60" max="7200" placeholder="300">
+                <small style="color: rgba(255, 255, 255, 0.6); display: block; margin-top: 5px;">
+                    Ignore titles shorter than this (300 seconds = 5 minutes). Helps skip previews and extras.
+                </small>
+            </div>
+
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="autoEject">
+                    <span>Auto-eject disc after ripping</span>
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="notifyOnComplete">
+                    <span>Show notification when ripping completes</span>
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="keepMKV">
+                    <span>Keep MKV files (in addition to MP4)</span>
+                </label>
+            </div>
+
+            <button class="btn" onclick="saveRipperSettings()">Save Ripper Settings</button>
+            <div class="message" id="ripperMessage"></div>
         </div>
         </div>
 
@@ -732,6 +780,57 @@
             }
         }
 
+        async function loadRipperSettings() {
+            try {
+                const response = await fetch('/api/ripper-settings', {
+                    credentials: 'include'
+                });
+                if (response.status === 401) {
+                    return;
+                }
+                const settings = await response.json();
+                document.getElementById('titlesToRip').value = settings.titlesToRip || 1;
+                document.getElementById('minTitleLength').value = settings.minTitleLength || 300;
+                document.getElementById('autoEject').checked = settings.autoEject !== undefined ? settings.autoEject : true;
+                document.getElementById('notifyOnComplete').checked = settings.notifyOnComplete !== undefined ? settings.notifyOnComplete : true;
+                document.getElementById('keepMKV').checked = settings.keepMKV || false;
+            } catch (error) {
+                console.error('Error loading ripper settings:', error);
+            }
+        }
+
+        async function saveRipperSettings() {
+            const settings = {
+                titlesToRip: parseInt(document.getElementById('titlesToRip').value),
+                minTitleLength: parseInt(document.getElementById('minTitleLength').value),
+                autoEject: document.getElementById('autoEject').checked,
+                notifyOnComplete: document.getElementById('notifyOnComplete').checked,
+                keepMKV: document.getElementById('keepMKV').checked
+            };
+
+            try {
+                const response = await fetch('/api/ripper-settings', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                if (response.status === 401) {
+                    return;
+                }
+
+                const result = await response.json();
+                if (result.success) {
+                    showMessage('ripperMessage', 'Ripper settings saved successfully!', 'success');
+                } else {
+                    showMessage('ripperMessage', 'Error: ' + result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('ripperMessage', 'Error saving ripper settings: ' + error.message, 'error');
+            }
+        }
+
         function showMessage(elementId, message, type) {
             const messageEl = document.getElementById(elementId);
             messageEl.textContent = message;
@@ -745,6 +844,7 @@
         // Initialize
         loadMovies();
         loadGeneralSettings();
+        loadRipperSettings();
     </script>
 </body>
 </html>
