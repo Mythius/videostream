@@ -322,6 +322,60 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        .notification-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid;
+            display: flex;
+            gap: 15px;
+            align-items: flex-start;
+        }
+
+        .notification-item.success {
+            border-left-color: #4caf50;
+        }
+
+        .notification-item.info {
+            border-left-color: #2196f3;
+        }
+
+        .notification-item.warning {
+            border-left-color: #ff9800;
+        }
+
+        .notification-item.error {
+            border-left-color: #f44336;
+        }
+
+        .notification-icon {
+            font-size: 24px;
+            min-width: 30px;
+            text-align: center;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            margin-bottom: 5px;
+            font-size: 1.1em;
+        }
+
+        .notification-message {
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.5;
+        }
+
+        .notification-time {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -336,6 +390,7 @@
             <button class="tab active" onclick="switchTab('general')">General</button>
             <button class="tab" onclick="switchTab('movies')">Movies</button>
             <button class="tab" onclick="switchTab('ripper')">Disc Ripper</button>
+            <button class="tab" onclick="switchTab('notifications')">Notifications</button>
             <button class="tab" onclick="switchTab('roku')">Roku</button>
         </div>
 
@@ -350,7 +405,10 @@
             </div>
             <div class="form-group">
                 <label for="url">Server URL</label>
-                <input type="text" id="url" placeholder="e.g., https://media.msouthwick.com">
+                <div style="display: flex; gap: 10px; align-items: flex-start;">
+                    <input type="text" id="url" placeholder="e.g., https://media.msouthwick.com" style="flex: 1;">
+                    <button class="btn" onclick="detectIPAddress()" style="white-space: nowrap;">Detect IP</button>
+                </div>
                 <small style="color: rgba(255, 255, 255, 0.6); display: block; margin-top: 5px;">Full URL where the server is accessible (with http:// or https://)</small>
             </div>
             <div class="form-group">
@@ -425,6 +483,22 @@
         </div>
         </div>
 
+        <!-- Notifications Tab -->
+        <div id="notifications-tab" class="tab-content">
+        <div class="section">
+            <h2>Disc Ripper Activity</h2>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <p style="color: rgba(255, 255, 255, 0.7);">Real-time notifications from the disc ripper service</p>
+                <button class="btn btn-secondary small-btn" onclick="clearNotifications()">Clear History</button>
+            </div>
+
+            <div id="notificationsList" style="max-height: 600px; overflow-y: auto;">
+                <p style="text-align: center; color: rgba(255, 255, 255, 0.5); padding: 40px;">Loading notifications...</p>
+            </div>
+        </div>
+        </div>
+
         <!-- Roku Tab -->
         <div id="roku-tab" class="tab-content">
         <div class="section">
@@ -464,6 +538,9 @@
 
         // Tab switching
         function switchTab(tabName) {
+            // Stop notification refresh if leaving notifications tab
+            stopNotificationRefresh();
+
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.remove('active');
@@ -475,6 +552,11 @@
             // Show selected tab
             document.getElementById(tabName + '-tab').classList.add('active');
             event.target.classList.add('active');
+
+            // Start notification refresh if entering notifications tab
+            if (tabName === 'notifications') {
+                startNotificationRefresh();
+            }
         }
 
         // Scan for Roku devices
@@ -729,6 +811,22 @@
             }
         }
 
+        async function detectIPAddress() {
+            try {
+                const response = await fetch('/api/detect-ip');
+                const data = await response.json();
+
+                if (data.url) {
+                    document.getElementById('url').value = data.url;
+                    showMessage('generalMessage', 'IP address detected: ' + data.url, 'success');
+                } else {
+                    showMessage('generalMessage', 'Could not detect IP address', 'error');
+                }
+            } catch (error) {
+                showMessage('generalMessage', 'Error detecting IP: ' + error.message, 'error');
+            }
+        }
+
         async function loadGeneralSettings() {
             try {
                 const response = await fetch('/api/settings', {
@@ -831,6 +929,62 @@
             }
         }
 
+        async function loadNotifications() {
+            try {
+                const response = await fetch('/api/notifications');
+                const notifications = await response.json();
+                renderNotifications(notifications);
+            } catch (error) {
+                console.error('Error loading notifications:', error);
+            }
+        }
+
+        function renderNotifications(notifications) {
+            const container = document.getElementById('notificationsList');
+
+            if (!notifications || notifications.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: rgba(255,255,255,0.5); padding: 20px;">No notifications yet</p>';
+                return;
+            }
+
+            container.innerHTML = notifications.map(notif => {
+                const icons = {
+                    success: '✓',
+                    info: 'ℹ',
+                    warning: '⚠',
+                    error: '✗'
+                };
+
+                const date = new Date(notif.timestamp);
+                const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+                return `
+                    <div class="notification-item ${notif.type}">
+                        <div class="notification-icon">${icons[notif.type] || 'ℹ'}</div>
+                        <div class="notification-content">
+                            <div class="notification-title">${notif.title}</div>
+                            <div class="notification-message">${notif.message}</div>
+                        </div>
+                        <div class="notification-time">${timeStr}<br><span style="font-size: 10px; opacity: 0.7;">${dateStr}</span></div>
+                    </div>
+                `;
+            }).reverse().join('');
+        }
+
+        async function clearNotifications() {
+            if (!confirm('Are you sure you want to clear all notification history?')) {
+                return;
+            }
+
+            try {
+                await fetch('/api/notifications/clear', { method: 'POST' });
+                loadNotifications();
+            } catch (error) {
+                alert('Error clearing notifications: ' + error.message);
+            }
+        }
+
         function showMessage(elementId, message, type) {
             const messageEl = document.getElementById(elementId);
             messageEl.textContent = message;
@@ -839,6 +993,19 @@
             setTimeout(() => {
                 messageEl.style.display = 'none';
             }, 5000);
+        }
+
+        // Auto-refresh notifications when on notifications tab
+        let notificationRefreshInterval;
+        function startNotificationRefresh() {
+            loadNotifications();
+            notificationRefreshInterval = setInterval(loadNotifications, 5000);
+        }
+
+        function stopNotificationRefresh() {
+            if (notificationRefreshInterval) {
+                clearInterval(notificationRefreshInterval);
+            }
         }
 
         // Initialize

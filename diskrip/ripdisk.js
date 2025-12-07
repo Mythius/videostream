@@ -4,6 +4,7 @@ const { exec, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const notifier = require('node-notifier');
+const http = require('http');
 
 // Load configuration from root directory
 const CONFIG_FILE = path.join(__dirname, '..', 'config.json');
@@ -45,6 +46,43 @@ const CHECK_INTERVAL_MS = 60000;  // Check every 60 seconds (1 minute)
 function log(message) {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] ${message}`);
+}
+
+/**
+ * Send notification to server
+ */
+function sendNotification(type, title, message) {
+    try {
+        // Load config to get port
+        const rootConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+        const port = rootConfig.port || 80;
+
+        const data = JSON.stringify({ type, title, message });
+
+        const options = {
+            hostname: 'localhost',
+            port: port,
+            path: '/api/ripper-notification',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': data.length
+            }
+        };
+
+        const req = http.request(options, (res) => {
+            // Silently handle response
+        });
+
+        req.on('error', (error) => {
+            // Silently handle errors - notifications are optional
+        });
+
+        req.write(data);
+        req.end();
+    } catch (error) {
+        // Silently handle errors - notifications are optional
+    }
 }
 
 /**
@@ -447,6 +485,7 @@ async function ripToMKV(discInfo) {
                     log('  4. Clean the optical drive lens');
 
                     userMessage = 'Unable to read disc - the disc may be scratched, damaged, or dirty. Please clean the disc and try again.';
+                    sendNotification('error', 'Disc Read Error', 'Unable to read disc - it may be scratched or damaged');
                 } else {
                     // Generic error - show diagnostic information
                     log('=== Diagnostic Information ===');
@@ -541,13 +580,19 @@ async function ejectDisc() {
     try {
         log('Ejecting disc...');
         await execPromise(`eject ${config.diskDevice}`);
-        log('Disc ejected successfully');
+        log('✓ Disc ejected successfully');
 
         // Set flag to wait for disc removal before checking for new discs
         waitingForDiscRemoval = true;
         log('Waiting for disc to be removed before detecting new discs...');
     } catch (error) {
-        log('Error ejecting disc: ' + error.message);
+        log('✗ Error ejecting disc: ' + (error.stderr || error.message || error));
+        log('Possible causes:');
+        log('  - Disc drive is not accessible');
+        log('  - No disc is in the drive');
+        log('  - Drive is being used by another process');
+        log(`  - Check device path: ${config.diskDevice}`);
+        // Don't throw error - ejection failure shouldn't stop the process
     }
 }
 
@@ -584,16 +629,27 @@ async function ripDisc() {
         log(`Disc detected: ${discInfo.name} (${discInfo.titleCount} valid titles, ripping ${titlesToRip})`);
 
         notify('Disc Detected', `Retrieving: ${discInfo.name}`);
+        sendNotification('info', 'Disc Detected', `Starting to rip "${discInfo.name}"`);
 
     // Rip to MKV
     const { mkvFiles, outputPath, createdSubfolder } = await ripToMKV(discInfo);
         log(`Created ${mkvFiles.length} MKV files`);
+
+        // Eject disc immediately after MKV ripping (disc is no longer needed)
+        // This allows the user to insert the next disc while MP4 conversion happens
+        if (config.autoEject) {
+            log('Ejecting disc (no longer needed for MP4 conversion)...');
+            await ejectDisc();
+        }
 
         // Create output folder
         const finalOutputFolder = outputFolder;
         if (!fs.existsSync(finalOutputFolder)) {
             fs.mkdirSync(finalOutputFolder, { recursive: true });
         }
+
+        // Notify that compression is starting
+        sendNotification('info', 'Starting Compression', `Converting "${discInfo.name}" to MP4 format`);
 
         // Convert each MKV to MP4
         for (let i = 0; i < mkvFiles.length; i++) {
@@ -632,6 +688,7 @@ async function ripDisc() {
 
         log(`=== Ripping complete! Files saved to: ${finalOutputFolder} ===`);
         notify('Ripping Complete', `${discInfo.name} has been ripped successfully!`);
+        sendNotification('success', 'Ready to Stream', `"${discInfo.name}" is now available for streaming`);
 
         // Fetch thumbnail for the newly ripped movie
         log('Fetching thumbnail for newly ripped movie...');
@@ -647,14 +704,19 @@ async function ripDisc() {
         lastRipTime = Date.now();
         log(`Cooldown started (${RIP_COOLDOWN_MS / 1000}s) to prevent re-ripping the same disc`);
 
-        // Eject disc if configured
-        if (config.autoEject) {
-            await ejectDisc();
-        }
-
     } catch (error) {
         log('Error during ripping process: ' + (error.message || error));
         notify('Ripping Failed', 'An error occurred during disc ripping');
+
+        // Try to eject disc even on error (cleanup)
+        if (config.autoEject) {
+            try {
+                log('Attempting to eject disc after error...');
+                await ejectDisc();
+            } catch (ejectError) {
+                log(`Failed to eject disc after error: ${ejectError.message}`);
+            }
+        }
     } finally {
         isRipping = false;
     }

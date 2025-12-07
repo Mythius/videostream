@@ -95,6 +95,30 @@ try {
   console.error("Error with config file:", err);
 }
 
+// Notification storage (in-memory)
+let notifications = [];
+
+// Helper function to add notification
+function addNotification(type, title, message) {
+  const notification = {
+    type,
+    title,
+    message,
+    timestamp: new Date().toISOString()
+  };
+  notifications.push(notification);
+
+  // Keep only last 100 notifications
+  if (notifications.length > 100) {
+    notifications = notifications.slice(-100);
+  }
+
+  // Emit to connected clients via socket.io
+  io.emit('notification', notification);
+
+  console.log(`[NOTIFICATION] ${type.toUpperCase()}: ${title} - ${message}`);
+}
+
 const port = config.port;
 app.use(
   cors({
@@ -635,6 +659,38 @@ app.post("/api/ripper-settings", requireAuth, express.json(), (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Error updating ripper settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Get notifications
+app.get("/api/notifications", requireAuth, (req, res) => {
+  res.json(notifications);
+});
+
+// API: Clear notifications
+app.post("/api/notifications/clear", requireAuth, (req, res) => {
+  notifications = [];
+  res.json({ success: true });
+});
+
+// API: Receive notification from ripper (no auth required - internal service)
+app.post("/api/ripper-notification", express.json(), (req, res) => {
+  const { type, title, message } = req.body;
+  if (type && title && message) {
+    addNotification(type, title, message);
+  }
+  res.json({ success: true });
+});
+
+// API: Detect IP address
+app.get("/api/detect-ip", requireAuth, (req, res) => {
+  try {
+    const localIP = getLocalIPv4();
+    const detectedUrl = `http://${localIP}${config.port !== 80 ? ':' + config.port : ''}`;
+    res.json({ url: detectedUrl, ip: localIP, port: config.port });
+  } catch (error) {
+    console.error("Error detecting IP:", error);
     res.status(500).json({ error: error.message });
   }
 });
