@@ -75,7 +75,7 @@ try {
   if (!config.url) {
     const localIP = getLocalIPv4();
     config.url = `http://${localIP}:${config.port}`;
-    fetch('https://moviedb.msouthwick.com/submit?url=' + encodeURIComponent(config.url));
+    fetch('https://moviedb.msouthwick.com/submit?url=' + encodeURIComponent(localIP));
   }
 
   // Ensure URL has protocol (http:// or https://)
