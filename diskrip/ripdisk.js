@@ -65,7 +65,10 @@ function sendNotification(type, title, message) {
 
     log(`Sending notification to ${notificationUrl}: ${type} - ${title}`);
 
-    fetch(notificationUrl + "/api/ripper-notification", {
+    const url = notificationUrl + "/api/ripper-notification";
+    console.log(`Notification URL: ${url}`);
+
+    fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
