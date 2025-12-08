@@ -96,13 +96,7 @@ function sendNotification(type, title, message) {
  * Send notification
  */
 function notify(title, message) {
-    if (config.notifyOnComplete) {
-        notifier.notify({
-            title: title,
-            message: message,
-            sound: true
-        });
-    }
+    sendNotification('info', title, message);
 }
 
 /**
