@@ -202,7 +202,7 @@ app.use(authMiddleware);
 
 // Middleware to block settings page if showSettings is false
 app.use((req, res, next) => {
-  if (!config.showSettings && (req.path === '/settings.html' || req.path.startsWith('/api/settings') || req.path.startsWith('/api/movies-list') || req.path.startsWith('/api/rename-movie') || req.path.startsWith('/api/upload-thumbnail') || req.path.startsWith('/api/ripper-settings'))) {
+  if (!config.showSettings && (req.path === '/settings.html' || req.path.startsWith('/api/settings') || req.path.startsWith('/api/movies-list') || req.path.startsWith('/api/rename-movie') || req.path.startsWith('/api/upload-thumbnail') || req.path.startsWith('/api/upload-folder-icon') || req.path.startsWith('/api/ripper-settings'))) {
     return res.status(403).send('Settings page is disabled. Set showSettings to true in config.json to enable.');
   }
   next();
@@ -703,6 +703,40 @@ app.post("/api/upload-thumbnail", requireAuth, upload.single('thumbnail'), async
     res.json({ success: true });
   } catch (error) {
     console.error("Error uploading thumbnail:", error);
+
+    // Clean up the temporary file on error
+    if (file && file.path && fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
+
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Upload folder icon
+app.post("/api/upload-folder-icon", requireAuth, upload.single('folderIcon'), async (req, res) => {
+  const file = req.file;
+
+  if (!file) {
+    return res.status(400).json({ error: "Folder icon file is required" });
+  }
+
+  try {
+    const imgsDir = path.join(mainfolder, "site", "imgs");
+    const finalPath = path.join(imgsDir, "folder.png");
+
+    // Convert and crop the uploaded image to PNG with 3:2 aspect ratio
+    await convertAndCropImage(file.path, finalPath);
+
+    // Clean up the temporary uploaded file
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
+
+    console.log(`Uploaded and processed folder icon`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error uploading folder icon:", error);
 
     // Clean up the temporary file on error
     if (file && file.path && fs.existsSync(file.path)) {
