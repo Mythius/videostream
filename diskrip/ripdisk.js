@@ -52,6 +52,7 @@ function log(message) {
  * Send notification to server
  */
 function sendNotification(type, title, message) {
+    log(`Preparing to send notification: ${type} - ${title}`);
     try {
         // Load config to get port
         const rootConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
