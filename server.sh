@@ -1,12 +1,21 @@
 #!/bin/bash
 
+# ============================================
+# Configuration Variables
+# Edit these paths if your installation is in a different location
+# ============================================
+USER="user"
+APP_DIR="/home/user/videostream"
+NVM_DIR="/home/$USER/.nvm"
+# ============================================
+
 # Change to the application directory
-cd /home/user/videostream
+cd "$APP_DIR"
 
 # Function to setup nvm and node paths
 setup_node() {
     # Load nvm if available
-    export NVM_DIR="/home/user/.nvm"
+    export NVM_DIR="$NVM_DIR"
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
     # Get node and npm paths (nvm will use the default version)
@@ -16,7 +25,7 @@ setup_node() {
     # If nvm didn't work, try to find node manually in nvm directory
     if [ -z "$NODE_PATH" ] || [ -z "$NPM_PATH" ]; then
         # Find the most recently modified node installation (likely the current version)
-        NVM_NODE_DIR=$(find /home/user/.nvm/versions/node -maxdepth 1 -type d -name "v*" 2>/dev/null | sort -V | tail -n 1)
+        NVM_NODE_DIR=$(find "$NVM_DIR/versions/node" -maxdepth 1 -type d -name "v*" 2>/dev/null | sort -V | tail -n 1)
         if [ -n "$NVM_NODE_DIR" ]; then
             NODE_PATH="$NVM_NODE_DIR/bin/node"
             NPM_PATH="$NVM_NODE_DIR/bin/npm"
@@ -40,27 +49,27 @@ setup_node() {
     echo "Using NPM: $NPM_PATH"
 }
 
-# Run git pull and npm install as the user user (not root)
+# Run git pull and npm install as the user (not root)
 # This ensures npm can find the correct node installation via nvm
 if [ "$EUID" -eq 0 ]; then
-    echo "Running as root - executing git pull and npm install as user user..."
-    su - user -c "
-        cd /home/user/videostream
+    echo "Running as root - executing git pull and npm install as user $USER..."
+    su - "$USER" -c "
+        cd \"$APP_DIR\"
         git pull
 
         # Load nvm
-        export NVM_DIR=\"/home/user/.nvm\"
+        export NVM_DIR=\"$NVM_DIR\"
         [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\"
 
         # Run npm install
         npm install
     "
 else
-    echo "Running as user user - executing git pull and npm install..."
+    echo "Running as user $USER - executing git pull and npm install..."
     git pull
 
     # Load nvm
-    export NVM_DIR="/home/user/.nvm"
+    export NVM_DIR="$NVM_DIR"
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
     npm install
