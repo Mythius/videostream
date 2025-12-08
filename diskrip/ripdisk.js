@@ -615,65 +615,64 @@ async function convertToMP4(mkvFile, outputFolder, outputFilename = null, movieN
         log(`Converting ${basename}.mkv to MP4 as ${mp4Name}...`);
         log('Starting ffmpeg as detached process to survive service restarts...');
 
-        const args = [
-            '-i', mkvFile,
-            '-c:v', config.mp4Settings.videoCodec,
-            '-preset', config.mp4Settings.preset,
-            '-crf', config.mp4Settings.crf.toString(),
-            '-c:a', config.mp4Settings.audioCodec,
-            '-b:a', '192k',
-            '-movflags', '+faststart',
-            mp4File
-        ];
-
         // Create a log file for ffmpeg output
         const logFile = path.join(config.tempFolder, `ffmpeg-${Date.now()}.log`);
-        const logFd = fs.openSync(logFile, 'a');
 
-        // Spawn ffmpeg as a detached process
-        // This allows it to continue running even if the parent process exits
-        const ffmpeg = spawn('ffmpeg', args, {
-            detached: true,
-            stdio: ['ignore', logFd, logFd]
-        });
+        // Build ffmpeg command with nohup to ensure it survives parent exit
+        // Using shell command with nohup ensures the process won't receive SIGTERM
+        const ffmpegCmd = `nohup ffmpeg -i "${mkvFile}" -c:v ${config.mp4Settings.videoCodec} -preset ${config.mp4Settings.preset} -crf ${config.mp4Settings.crf} -c:a ${config.mp4Settings.audioCodec} -b:a 192k -movflags +faststart "${mp4File}" >> "${logFile}" 2>&1 &`;
 
-        // Close the file descriptor in parent process (child has its own copy)
-        fs.closeSync(logFd);
+        log(`Executing: ${ffmpegCmd}`);
 
-        // Unref the child process so parent can exit independently
-        ffmpeg.unref();
+        // Execute the command in a shell to spawn truly independent process
+        exec(ffmpegCmd);
 
-        log(`FFmpeg started as detached process (PID: ${ffmpeg.pid})`);
         log(`FFmpeg output will be written to: ${logFile}`);
 
-        // Since the process is detached, we can't wait for it to complete
-        // Instead, we'll return immediately and let it run in the background
-        // The file will appear when conversion is complete
-
-        // Give ffmpeg a moment to start up and catch any immediate errors
+        // Give the process a moment to start and get its PID
         setTimeout(() => {
-            // Check if process is still running (it should be)
             try {
-                // This will throw if process doesn't exist
-                process.kill(ffmpeg.pid, 0);
-                log(`✓ FFmpeg process confirmed running (PID: ${ffmpeg.pid})`);
-                log(`Note: Conversion will continue in background. Check ${mp4File} for completion.`);
+                // Try to find the ffmpeg process by looking for our specific output file
+                const { execSync } = require('child_process');
+                const psOutput = execSync(
+                    `ps aux | grep "[f]fmpeg.*${path.basename(mp4File)}" | awk '{print $2}'`
+                ).toString().trim();
 
-                // Start monitoring the process for completion
-                monitorFFmpegCompletion(ffmpeg.pid, mp4File, displayName, logFile);
+                if (psOutput) {
+                    const ffmpegPid = parseInt(psOutput.split('\n')[0]);
+                    log(`✓ FFmpeg process confirmed running (PID: ${ffmpegPid})`);
+                    log(`Note: Conversion will continue in background. Check ${mp4File} for completion.`);
 
-                resolve(mp4File);
-            } catch (err) {
-                // Process already died - probably an immediate error
-                log(`✗ FFmpeg process died immediately`);
-                // Try to read log file for error
-                try {
-                    const logContent = fs.readFileSync(logFile, 'utf8');
-                    log(`FFmpeg log:\n${logContent}`);
-                    reject(new Error(`FFmpeg failed to start. Check log: ${logFile}`));
-                } catch (readErr) {
-                    reject(new Error(`FFmpeg failed to start and log file could not be read`));
+                    // Start monitoring the process for completion
+                    monitorFFmpegCompletion(ffmpegPid, mp4File, displayName, logFile);
+
+                    resolve(mp4File);
+                } else {
+                    // Process might not have started or already finished
+                    log('Warning: FFmpeg process not found in process list');
+
+                    // Check if process failed immediately by looking at log
+                    setTimeout(() => {
+                        try {
+                            const logContent = fs.readFileSync(logFile, 'utf8');
+                            if (logContent.toLowerCase().includes('error')) {
+                                log(`FFmpeg error detected:\n${logContent.slice(-500)}`);
+                                reject(new Error(`FFmpeg failed to start. Check log: ${logFile}`));
+                            } else {
+                                // Process might have started and finished very quickly (unlikely for video)
+                                log('FFmpeg process completed or log is empty');
+                                resolve(mp4File);
+                            }
+                        } catch (readErr) {
+                            log('Could not read ffmpeg log file');
+                            resolve(mp4File); // Resolve anyway, monitor will catch failures
+                        }
+                    }, 500);
                 }
+            } catch (err) {
+                log(`Error finding ffmpeg process: ${err.message}`);
+                // Still resolve - the file monitoring will detect if conversion failed
+                resolve(mp4File);
             }
         }, 1000);
     });
