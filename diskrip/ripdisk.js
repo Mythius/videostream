@@ -537,7 +537,7 @@ async function ripToMKV(discInfo) {
 /**
  * Monitor ffmpeg process completion and send notification when done
  */
-function monitorFFmpegCompletion(pid, mp4File, movieName, logFile) {
+function monitorFFmpegCompletion(pid, mp4File, movieName, logFile, mkvFile = null) {
     const checkInterval = 5000; // Check every 5 seconds
     let lastSize = 0;
     let unchangedCount = 0;
@@ -574,6 +574,31 @@ function monitorFFmpegCompletion(pid, mp4File, movieName, logFile) {
                 log(`✓ FFmpeg compression completed for "${movieName}"`);
                 log(`Final file size: ${(currentSize / 1024 / 1024).toFixed(2)} MB`);
                 sendNotification('success', 'Compression Complete', `"${movieName}" is now ready to stream`);
+
+                // Clean up MKV file if specified and keepMKV is false
+                if (mkvFile && !config.keepMKV) {
+                    try {
+                        if (fs.existsSync(mkvFile)) {
+                            log(`Deleting source MKV file: ${mkvFile}`);
+                            fs.unlinkSync(mkvFile);
+                            log(`✓ MKV file deleted successfully`);
+
+                            // Try to remove parent directory if empty
+                            const parentDir = path.dirname(mkvFile);
+                            try {
+                                const files = fs.readdirSync(parentDir);
+                                if (files.length === 0 && parentDir !== config.tempFolder) {
+                                    fs.rmdirSync(parentDir);
+                                    log(`✓ Cleaned up empty directory: ${parentDir}`);
+                                }
+                            } catch (dirErr) {
+                                // Ignore errors cleaning up directory
+                            }
+                        }
+                    } catch (deleteErr) {
+                        log(`Warning: Failed to delete MKV file: ${deleteErr.message}`);
+                    }
+                }
             } else {
                 // Process finished but no file - error
                 log(`✗ FFmpeg process ended but no output file found for "${movieName}"`);
@@ -611,7 +636,7 @@ function monitorFFmpegCompletion(pid, mp4File, movieName, logFile) {
  * Convert MKV to MP4 using FFmpeg
  * Runs as a detached background process to survive service restarts
  */
-async function convertToMP4(mkvFile, outputFolder, outputFilename = null, movieName = null) {
+async function convertToMP4(mkvFile, outputFolder, outputFilename = null, movieName = null, cleanupMkv = false) {
     return new Promise((resolve, reject) => {
         const basename = path.basename(mkvFile, '.mkv');
         const mp4Name = outputFilename || `${basename}.mp4`;
@@ -650,7 +675,8 @@ async function convertToMP4(mkvFile, outputFolder, outputFilename = null, movieN
                     log(`Note: Conversion will continue in background. Check ${mp4File} for completion.`);
 
                     // Start monitoring the process for completion
-                    monitorFFmpegCompletion(ffmpegPid, mp4File, displayName, logFile);
+                    // Pass mkvFile for cleanup only if cleanupMkv is true
+                    monitorFFmpegCompletion(ffmpegPid, mp4File, displayName, logFile, cleanupMkv ? mkvFile : null);
 
                     resolve(mp4File);
                 } else {
@@ -990,7 +1016,7 @@ async function processOrphanedMkvFiles() {
             try {
                 log(`Converting orphaned MKV ${i + 1}/${mkvFiles.length}: ${basename}.mkv`);
                 sendNotification('info', 'Recovering Orphaned File', `Converting "${displayName}" to MP4`);
-                await convertToMP4(mkvFile, finalOutputFolder, outputFilename, displayName);
+                await convertToMP4(mkvFile, finalOutputFolder, outputFilename, displayName, true);
                 log(`✓ Successfully started conversion for orphaned MKV (running in background)`);
             } catch (conversionError) {
                 log(`✗ Failed to convert orphaned MKV ${basename}.mkv: ${conversionError.message}`);
