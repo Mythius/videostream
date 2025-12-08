@@ -50,42 +50,40 @@ function log(message) {
  * Send notification to server
  */
 function sendNotification(type, title, message) {
-    console.log(`Preparing to send notification: ${type} - ${title}`);
-    try {
-        // Load config to get notification URL
-        const notificationUrl = config.url;
+  console.log(`Preparing to send notification: ${type} - ${title}`);
+  try {
+    // Load config to get notification URL
+    const notificationUrl = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")).url;
 
-        if (!notificationUrl) {
-            log("Warning: notificationUrl not configured in config.json");
-            return;
-        }
-
-        const payload = { type, title, message };
-
-        log(
-            `Sending notification to ${notificationUrl}: ${type} - ${title}`
-        );
-
-        fetch(notificationUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-        })
-            .then((res) => {
-                if (res.ok) {
-                    log(`✓ Notification sent successfully`);
-                } else {
-                    log(`Warning: Notification returned status ${res.status}`);
-                }
-            })
-            .catch((error) => {
-                log(`Warning: Failed to send notification: ${error.message}`);
-            });
-    } catch (error) {
-        log(`Warning: Error sending notification: ${error.message}`);
+    if (!notificationUrl) {
+      log("Warning: notificationUrl not configured in config.json");
+      return;
     }
+
+    const payload = { type, title, message };
+
+    log(`Sending notification to ${notificationUrl}: ${type} - ${title}`);
+
+    fetch(notificationUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+      .then((res) => {
+        if (res.ok) {
+          log(`✓ Notification sent successfully`);
+        } else {
+          log(`Warning: Notification returned status ${res.status}`);
+        }
+      })
+      .catch((error) => {
+        log(`Warning: Failed to send notification: ${error.message}`);
+      });
+  } catch (error) {
+    log(`Warning: Error sending notification: ${error.message}`);
+  }
 }
 /**
  * Execute command and return promise
