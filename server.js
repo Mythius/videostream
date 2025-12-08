@@ -1,4 +1,3 @@
-
 var express = require("express");
 var app = express();
 var http = require("http").createServer(app);
@@ -46,9 +45,9 @@ let config = {
       videoCodec: "libx264",
       audioCodec: "aac",
       preset: "medium",
-      crf: 20
-    }
-  }
+      crf: 20,
+    },
+  },
 };
 
 try {
@@ -65,9 +64,15 @@ try {
       url: existingConfig.url || null,
       videoDirectory: existingConfig.videoDirectory || config.videoDirectory,
       password: existingConfig.password || config.password,
-      passwordRequired: existingConfig.passwordRequired !== undefined ? existingConfig.passwordRequired : config.passwordRequired,
-      showSettings: existingConfig.showSettings !== undefined ? existingConfig.showSettings : config.showSettings,
-      diskrip: existingConfig.diskrip || config.diskrip
+      passwordRequired:
+        existingConfig.passwordRequired !== undefined
+          ? existingConfig.passwordRequired
+          : config.passwordRequired,
+      showSettings:
+        existingConfig.showSettings !== undefined
+          ? existingConfig.showSettings
+          : config.showSettings,
+      diskrip: existingConfig.diskrip || config.diskrip,
     };
   }
 
@@ -76,11 +81,13 @@ try {
   if (!config.url) {
     const localIP = getLocalIPv4();
     config.url = `http://${localIP}:${config.port}`;
-    fetch('https://moviedb.msouthwick.com/submit?url=' + encodeURIComponent(localIP));
+    fetch(
+      "https://moviedb.msouthwick.com/submit?url=" + encodeURIComponent(localIP)
+    );
   }
 
   // Ensure URL has protocol (http:// or https://)
-  if (!config.url.startsWith('http://') && !config.url.startsWith('https://')) {
+  if (!config.url.startsWith("http://") && !config.url.startsWith("https://")) {
     config.url = `http://${config.url}`;
   }
 
@@ -105,7 +112,7 @@ function addNotification(type, title, message) {
     type,
     title,
     message,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
   notifications.push(notification);
 
@@ -115,10 +122,19 @@ function addNotification(type, title, message) {
   }
 
   // Emit to connected clients via socket.io
-  io.emit('notification', notification);
+  io.emit("notification", notification);
 
   console.log(`[NOTIFICATION] ${type.toUpperCase()}: ${title} - ${message}`);
 }
+
+app.post("/api/ripper-notification", express.json(), (req, res) => {
+  const { type, title, message } = req.body;
+  console.log("Notification received from ripper:", type, title, message);
+  if (type && title && message) {
+    addNotification(type, title, message);
+  }
+  res.json({ success: true });
+});
 
 const port = config.port;
 app.use(
@@ -151,7 +167,7 @@ const mainfolder = __dirname + "/";
 const cookieParser = require("cookie-parser");
 app.use(cookieParser());
 
-const COOKIE_NAME = 'auth';
+const COOKIE_NAME = "auth";
 
 // Login endpoint - MUST be before authMiddleware
 app.post("/login", express.urlencoded({ extended: true }), (req, res) => {
@@ -160,50 +176,70 @@ app.post("/login", express.urlencoded({ extended: true }), (req, res) => {
   if (password === config.password) {
     res.cookie(COOKIE_NAME, config.password, {
       httpOnly: true,
-      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
-    res.redirect(next || '/');
+    res.redirect(next || "/");
   } else {
-    res.redirect('/login.html?error=incorrect' + (next ? '&next=' + encodeURIComponent(next) : ''));
+    res.redirect(
+      "/login.html?error=incorrect" +
+        (next ? "&next=" + encodeURIComponent(next) : "")
+    );
   }
 });
 
 // Password protection middleware
 function authMiddleware(req, res, next) {
-    // Skip authentication if password is not required
-    if (!config.passwordRequired) {
-        return next();
-    }
+  // Skip authentication if password is not required
+  if (!config.passwordRequired) {
+    return next();
+  }
 
-    // Always allow access to login page and static assets
-    if (req.path === '/login.html' ||
-        req.path.startsWith('/clapboard.jpg') ||
-        req.path.startsWith('/imgs/') ||
-        req.path.match(/\.(css|js|png|jpg|jpeg|gif|ico|woff|woff2|ttf)$/)) {
-        return next();
-    }
+  // Always allow access to login page and static assets
+  if (
+    req.path === "/login.html" ||
+    req.path.startsWith("/clapboard.jpg") ||
+    req.path.startsWith("/imgs/") ||
+    req.path.match(/\.(css|js|png|jpg|jpeg|gif|ico|woff|woff2|ttf)$/)
+  ) {
+    return next();
+  }
 
-    // Always allow access to /movies and /json endpoints (for Roku app)
-    if (req.path.startsWith('/movies/') || req.path === '/json') {
-        return next();
-    }
+  // Always allow access to /movies and /json endpoints (for Roku app)
+  if (req.path.startsWith("/movies/") || req.path === "/json") {
+    return next();
+  }
 
-    // Check for password in cookie
-    if (req.cookies && req.cookies[COOKIE_NAME] === config.password) {
-        return next();
-    }
+  // Check for password in cookie
+  if (req.cookies && req.cookies[COOKIE_NAME] === config.password) {
+    return next();
+  }
 
-    // Not authenticated - redirect to login
-    const nextPath = req.path !== '/' ? req.path : '';
-    res.redirect('/login.html' + (nextPath ? '?next=' + encodeURIComponent(nextPath) : ''));
+  // Not authenticated - redirect to login
+  const nextPath = req.path !== "/" ? req.path : "";
+  res.redirect(
+    "/login.html" + (nextPath ? "?next=" + encodeURIComponent(nextPath) : "")
+  );
 }
 
 app.use(authMiddleware);
 
 // Middleware to block settings page if showSettings is false
 app.use((req, res, next) => {
-  if (!config.showSettings && (req.path === '/settings.html' || req.path.startsWith('/api/settings') || req.path.startsWith('/api/movies-list') || req.path.startsWith('/api/rename-movie') || req.path.startsWith('/api/upload-thumbnail') || req.path.startsWith('/api/upload-folder-icon') || req.path.startsWith('/api/ripper-settings'))) {
-    return res.status(403).send('Settings page is disabled. Set showSettings to true in config.json to enable.');
+  if (
+    !config.showSettings &&
+    (req.path === "/settings.html" ||
+      req.path.startsWith("/api/settings") ||
+      req.path.startsWith("/api/movies-list") ||
+      req.path.startsWith("/api/rename-movie") ||
+      req.path.startsWith("/api/upload-thumbnail") ||
+      req.path.startsWith("/api/upload-folder-icon") ||
+      req.path.startsWith("/api/ripper-settings"))
+  ) {
+    return res
+      .status(403)
+      .send(
+        "Settings page is disabled. Set showSettings to true in config.json to enable."
+      );
   }
   next();
 });
@@ -250,7 +286,12 @@ app.get("/movies/:filename", (req, res) => {
 
 // Route for series episodes (streaming from subfolder)
 app.get("/series/:seriesName/:episodeName", (req, res) => {
-  const filePath = path.join(config.videoDirectory, req.params.seriesName, req.params.episodeName) + ".mp4";
+  const filePath =
+    path.join(
+      config.videoDirectory,
+      req.params.seriesName,
+      req.params.episodeName
+    ) + ".mp4";
   fs.stat(filePath, (err, stats) => {
     if (err || !stats.isFile()) {
       return res.sendStatus(404);
@@ -294,15 +335,18 @@ app.get("/series/:seriesName", (req, res) => {
     }
 
     // Get all episodes in the folder
-    const episodes = fs.readdirSync(seriesPath)
-      .filter(f => f.endsWith('.mp4'))
+    const episodes = fs
+      .readdirSync(seriesPath)
+      .filter((f) => f.endsWith(".mp4"))
       .sort()
-      .map(f => {
-        const name = f.replace(/\.mp4$/i, '');
+      .map((f) => {
+        const name = f.replace(/\.mp4$/i, "");
         return {
           name: name,
-          url: `/series/${encodeURIComponent(seriesName)}/${encodeURIComponent(name)}`,
-          title: name
+          url: `/series/${encodeURIComponent(seriesName)}/${encodeURIComponent(
+            name
+          )}`,
+          title: name,
         };
       });
 
@@ -334,13 +378,19 @@ app.get("/series/:seriesName", (req, res) => {
 </html>`;
     }
 
-    const episodeHTML = episodes.map((ep, i) => `
+    const episodeHTML = episodes
+      .map(
+        (ep, i) => `
       <div class="episode" onclick="window.location.href='${ep.url}'">
         <strong>Episode ${i + 1}:</strong> ${ep.title}
       </div>
-    `).join('');
+    `
+      )
+      .join("");
 
-    const html = template.replace('{{EPISODES}}', episodeHTML).replace('{{SERIES_NAME}}', seriesName);
+    const html = template
+      .replace("{{EPISODES}}", episodeHTML)
+      .replace("{{SERIES_NAME}}", seriesName);
     res.send(html);
   } catch (err) {
     console.error("Error loading series:", err);
@@ -420,7 +470,10 @@ function getMovieThumbnail(movieName) {
 // Helper function to scan for videos and folders
 function getMoviesAndFolders() {
   const videoDir = config.videoDirectory;
-  const items = fs.readdirSync(videoDir).filter((f) => !f.startsWith(".")).sort();
+  const items = fs
+    .readdirSync(videoDir)
+    .filter((f) => !f.startsWith("."))
+    .sort();
 
   const result = [];
 
@@ -430,29 +483,30 @@ function getMoviesAndFolders() {
 
     if (stat.isDirectory()) {
       // It's a folder (series) - check if it has .mp4 files
-      const videosInFolder = fs.readdirSync(itemPath)
-        .filter(f => f.endsWith('.mp4'))
+      const videosInFolder = fs
+        .readdirSync(itemPath)
+        .filter((f) => f.endsWith(".mp4"))
         .sort();
 
       if (videosInFolder.length > 0) {
         result.push({
-          type: 'folder',
+          type: "folder",
           name: item,
           url: `/series/${encodeURIComponent(item)}`,
           thumbnail: getMovieThumbnail(item),
           title: item,
-          episodeCount: videosInFolder.length
+          episodeCount: videosInFolder.length,
         });
       }
-    } else if (item.endsWith('.mp4')) {
+    } else if (item.endsWith(".mp4")) {
       // It's a movie file
-      const name = item.replace(/\.mp4$/i, '');
+      const name = item.replace(/\.mp4$/i, "");
       result.push({
-        type: 'movie',
+        type: "movie",
         name: name,
         url: `/movies/${encodeURIComponent(name)}`,
         thumbnail: getMovieThumbnail(name),
-        title: name
+        title: name,
       });
     }
   }
@@ -462,11 +516,12 @@ function getMoviesAndFolders() {
 
 // Helper function to generate movie card HTML
 function generateMovieCardHTML(movie) {
-  const badge = movie.type === 'folder' ?
-    `<div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); padding: 5px 10px; border-radius: 5px; font-size: 12px;">${movie.episodeCount} episodes</div>` :
-    '';
+  const badge =
+    movie.type === "folder"
+      ? `<div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); padding: 5px 10px; border-radius: 5px; font-size: 12px;">${movie.episodeCount} episodes</div>`
+      : "";
 
-  return /*html*/`
+  return /*html*/ `
   <div class="movie-card" onclick="window.location.href='${movie.url}'">
       <img src="${movie.thumbnail}" alt="${movie.title}" class="movie-poster" onerror="this.src='/clapboard.jpg'">
       ${badge}
@@ -508,14 +563,17 @@ app.get("/json", (req, res) => {
     const items = getMoviesAndFolders();
 
     // Convert to absolute URLs for Roku
-    const links = items.map(item => ({
-      url: item.type === 'folder' ?
-        `${config.url}/series/${encodeURIComponent(item.name)}` :
-        `${config.url}/movies/${encodeURIComponent(item.name)}`,
-      thumbnail: item.thumbnail.startsWith('http') ? item.thumbnail : `${config.url}${item.thumbnail}`,
+    const links = items.map((item) => ({
+      url:
+        item.type === "folder"
+          ? `${config.url}/series/${encodeURIComponent(item.name)}`
+          : `${config.url}/movies/${encodeURIComponent(item.name)}`,
+      thumbnail: item.thumbnail.startsWith("http")
+        ? item.thumbnail
+        : `${config.url}${item.thumbnail}`,
       title: item.title,
       type: item.type,
-      episodeCount: item.episodeCount
+      episodeCount: item.episodeCount,
     }));
 
     res.send(links);
@@ -549,7 +607,7 @@ function requireAuth(req, res, next) {
   }
 
   return res.status(401).json({
-    error: "Unauthorized: Please log in to access this endpoint"
+    error: "Unauthorized: Please log in to access this endpoint",
   });
 }
 
@@ -604,7 +662,8 @@ app.post("/update-video-directory", express.json(), (req, res) => {
 app.get("/api/movies-list", requireAuth, (req, res) => {
   try {
     const videoDir = config.videoDirectory;
-    const files = fs.readdirSync(videoDir)
+    const files = fs
+      .readdirSync(videoDir)
       .filter((f) => !f.startsWith("."))
       .filter((f) => f.endsWith(".mp4"))
       .sort();
@@ -614,7 +673,7 @@ app.get("/api/movies-list", requireAuth, (req, res) => {
       return {
         title: name,
         thumbnail: getMovieThumbnail(name),
-        filename: f
+        filename: f,
       };
     });
 
@@ -630,7 +689,9 @@ app.post("/api/rename-movie", requireAuth, express.json(), async (req, res) => {
   const { oldName, newName } = req.body;
 
   if (!oldName || !newName) {
-    return res.status(400).json({ error: "Old name and new name are required" });
+    return res
+      .status(400)
+      .json({ error: "Old name and new name are required" });
   }
 
   try {
@@ -649,7 +710,9 @@ app.post("/api/rename-movie", requireAuth, express.json(), async (req, res) => {
 
     // Check if new name already exists
     if (fs.existsSync(newVideoPath)) {
-      return res.status(400).json({ error: "A movie with this name already exists" });
+      return res
+        .status(400)
+        .json({ error: "A movie with this name already exists" });
     }
 
     // Rename video file
@@ -663,9 +726,9 @@ app.post("/api/rename-movie", requireAuth, express.json(), async (req, res) => {
     console.log(`Renamed movie: ${oldName} -> ${newName}`);
 
     // Fetch new thumbnail for the renamed movie in the background
-    const getThumbnails = require('./diskrip/get_thumbnails.js');
-    getThumbnails.main().catch(error => {
-      console.error('Error fetching thumbnails after rename:', error.message);
+    const getThumbnails = require("./diskrip/get_thumbnails.js");
+    getThumbnails.main().catch((error) => {
+      console.error("Error fetching thumbnails after rename:", error.message);
     });
 
     res.json({ success: true });
@@ -676,76 +739,88 @@ app.post("/api/rename-movie", requireAuth, express.json(), async (req, res) => {
 });
 
 // API: Upload thumbnail
-const multer = require('multer');
+const multer = require("multer");
 const upload = multer({ dest: path.join(mainfolder, "site", "imgs", "temp") });
 
-app.post("/api/upload-thumbnail", requireAuth, upload.single('thumbnail'), async (req, res) => {
-  const { movieName } = req.body;
-  const file = req.file;
+app.post(
+  "/api/upload-thumbnail",
+  requireAuth,
+  upload.single("thumbnail"),
+  async (req, res) => {
+    const { movieName } = req.body;
+    const file = req.file;
 
-  if (!movieName || !file) {
-    return res.status(400).json({ error: "Movie name and thumbnail file are required" });
-  }
-
-  try {
-    const imgsDir = path.join(mainfolder, "site", "imgs");
-    const finalPath = path.join(imgsDir, movieName + ".png");
-
-    // Convert and crop the uploaded image to PNG with 3:2 aspect ratio
-    await convertAndCropImage(file.path, finalPath);
-
-    // Clean up the temporary uploaded file
-    if (fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
+    if (!movieName || !file) {
+      return res
+        .status(400)
+        .json({ error: "Movie name and thumbnail file are required" });
     }
 
-    console.log(`Uploaded and processed thumbnail for: ${movieName}`);
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error uploading thumbnail:", error);
+    try {
+      const imgsDir = path.join(mainfolder, "site", "imgs");
+      const finalPath = path.join(imgsDir, movieName + ".png");
 
-    // Clean up the temporary file on error
-    if (file && file.path && fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
+      // Convert and crop the uploaded image to PNG with 3:2 aspect ratio
+      await convertAndCropImage(file.path, finalPath);
+
+      // Clean up the temporary uploaded file
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+
+      console.log(`Uploaded and processed thumbnail for: ${movieName}`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error uploading thumbnail:", error);
+
+      // Clean up the temporary file on error
+      if (file && file.path && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+
+      res.status(500).json({ error: error.message });
     }
-
-    res.status(500).json({ error: error.message });
   }
-});
+);
 
 // API: Upload folder icon
-app.post("/api/upload-folder-icon", requireAuth, upload.single('folderIcon'), async (req, res) => {
-  const file = req.file;
+app.post(
+  "/api/upload-folder-icon",
+  requireAuth,
+  upload.single("folderIcon"),
+  async (req, res) => {
+    const file = req.file;
 
-  if (!file) {
-    return res.status(400).json({ error: "Folder icon file is required" });
-  }
-
-  try {
-    const imgsDir = path.join(mainfolder, "site", "imgs");
-    const finalPath = path.join(imgsDir, "folder.png");
-
-    // Convert and crop the uploaded image to PNG with 3:2 aspect ratio
-    await convertAndCropImage(file.path, finalPath);
-
-    // Clean up the temporary uploaded file
-    if (fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
+    if (!file) {
+      return res.status(400).json({ error: "Folder icon file is required" });
     }
 
-    console.log(`Uploaded and processed folder icon`);
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Error uploading folder icon:", error);
+    try {
+      const imgsDir = path.join(mainfolder, "site", "imgs");
+      const finalPath = path.join(imgsDir, "folder.png");
 
-    // Clean up the temporary file on error
-    if (file && file.path && fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
+      // Convert and crop the uploaded image to PNG with 3:2 aspect ratio
+      await convertAndCropImage(file.path, finalPath);
+
+      // Clean up the temporary uploaded file
+      if (fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+
+      console.log(`Uploaded and processed folder icon`);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error uploading folder icon:", error);
+
+      // Clean up the temporary file on error
+      if (file && file.path && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+
+      res.status(500).json({ error: error.message });
     }
-
-    res.status(500).json({ error: error.message });
   }
-});
+);
 
 // API: Get settings
 app.get("/api/settings", requireAuth, (req, res) => {
@@ -753,7 +828,7 @@ app.get("/api/settings", requireAuth, (req, res) => {
     serviceName: config.serviceName,
     url: config.url,
     password: config.password,
-    passwordRequired: config.passwordRequired
+    passwordRequired: config.passwordRequired,
   });
 });
 
@@ -764,13 +839,17 @@ app.post("/api/settings", requireAuth, express.json(), (req, res) => {
   try {
     if (serviceName !== undefined) config.serviceName = serviceName;
     if (password !== undefined) config.password = password;
-    if (passwordRequired !== undefined) config.passwordRequired = passwordRequired;
+    if (passwordRequired !== undefined)
+      config.passwordRequired = passwordRequired;
 
     // Update URL if provided
     if (url !== undefined) {
       config.url = url;
       // Ensure URL has protocol (http:// or https://)
-      if (!config.url.startsWith('http://') && !config.url.startsWith('https://')) {
+      if (
+        !config.url.startsWith("http://") &&
+        !config.url.startsWith("https://")
+      ) {
         config.url = `http://${config.url}`;
       }
     }
@@ -793,21 +872,31 @@ app.get("/api/ripper-settings", requireAuth, (req, res) => {
     autoEject: config.diskrip.autoEject,
     notifyOnComplete: config.diskrip.notifyOnComplete,
     keepMKV: config.diskrip.keepMKV,
-    outputSubfolder: config.diskrip.outputSubfolder || ""
+    outputSubfolder: config.diskrip.outputSubfolder || "",
   });
 });
 
 // API: Update ripper settings
 app.post("/api/ripper-settings", requireAuth, express.json(), (req, res) => {
-  const { titlesToRip, minTitleLength, autoEject, notifyOnComplete, keepMKV, outputSubfolder } = req.body;
+  const {
+    titlesToRip,
+    minTitleLength,
+    autoEject,
+    notifyOnComplete,
+    keepMKV,
+    outputSubfolder,
+  } = req.body;
 
   try {
     if (titlesToRip !== undefined) config.diskrip.titlesToRip = titlesToRip;
-    if (minTitleLength !== undefined) config.diskrip.minTitleLength = minTitleLength;
+    if (minTitleLength !== undefined)
+      config.diskrip.minTitleLength = minTitleLength;
     if (autoEject !== undefined) config.diskrip.autoEject = autoEject;
-    if (notifyOnComplete !== undefined) config.diskrip.notifyOnComplete = notifyOnComplete;
+    if (notifyOnComplete !== undefined)
+      config.diskrip.notifyOnComplete = notifyOnComplete;
     if (keepMKV !== undefined) config.diskrip.keepMKV = keepMKV;
-    if (outputSubfolder !== undefined) config.diskrip.outputSubfolder = outputSubfolder.trim();
+    if (outputSubfolder !== undefined)
+      config.diskrip.outputSubfolder = outputSubfolder.trim();
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
@@ -831,20 +920,14 @@ app.post("/api/notifications/clear", requireAuth, (req, res) => {
 });
 
 // API: Receive notification from ripper (no auth required - internal service)
-app.post("/api/ripper-notification", express.json(), (req, res) => {
-  const { type, title, message } = req.body;
-  console.log('Notification received from ripper:', type, title, message);
-  if (type && title && message) {
-    addNotification(type, title, message);
-  }
-  res.json({ success: true });
-});
 
 // API: Detect IP address
 app.get("/api/detect-ip", requireAuth, (req, res) => {
   try {
     const localIP = getLocalIPv4();
-    const detectedUrl = `http://${localIP}${config.port !== 80 ? ':' + config.port : ''}`;
+    const detectedUrl = `http://${localIP}${
+      config.port !== 80 ? ":" + config.port : ""
+    }`;
     res.json({ url: detectedUrl, ip: localIP, port: config.port });
   } catch (error) {
     console.error("Error detecting IP:", error);
@@ -888,29 +971,40 @@ async function scanForRokuDevices() {
   // Helper function to check if an IP has a Roku device
   const checkRokuAtIP = async (ip) => {
     return new Promise((resolve) => {
-      const http = require('http');
-      const req = http.get({
-        hostname: ip,
-        port: 8060,
-        path: '/query/device-info',
-        timeout: 1000
-      }, (resp) => {
-        let data = '';
-        resp.on('data', (chunk) => { data += chunk; });
-        resp.on('end', () => {
-          if (data.includes('Roku') || data.includes('roku')) {
-            const nameMatch = data.match(/<friendly-device-name>(.*?)<\/friendly-device-name>/);
-            const modelMatch = data.match(/<model-name>(.*?)<\/model-name>/);
-            const name = nameMatch ? nameMatch[1] : (modelMatch ? modelMatch[1] : 'Roku Device');
-            resolve({ ip, name });
-          } else {
-            resolve(null);
-          }
-        });
-      });
+      const http = require("http");
+      const req = http.get(
+        {
+          hostname: ip,
+          port: 8060,
+          path: "/query/device-info",
+          timeout: 1000,
+        },
+        (resp) => {
+          let data = "";
+          resp.on("data", (chunk) => {
+            data += chunk;
+          });
+          resp.on("end", () => {
+            if (data.includes("Roku") || data.includes("roku")) {
+              const nameMatch = data.match(
+                /<friendly-device-name>(.*?)<\/friendly-device-name>/
+              );
+              const modelMatch = data.match(/<model-name>(.*?)<\/model-name>/);
+              const name = nameMatch
+                ? nameMatch[1]
+                : modelMatch
+                ? modelMatch[1]
+                : "Roku Device";
+              resolve({ ip, name });
+            } else {
+              resolve(null);
+            }
+          });
+        }
+      );
 
-      req.on('error', () => resolve(null));
-      req.on('timeout', () => {
+      req.on("error", () => resolve(null));
+      req.on("timeout", () => {
         req.destroy();
         resolve(null);
       });
@@ -919,37 +1013,48 @@ async function scanForRokuDevices() {
 
   // Method 1: SSDP Discovery
   const ssdpDevices = await new Promise((resolve) => {
-    const dgram = require('dgram');
-    const socket = dgram.createSocket('udp4');
+    const dgram = require("dgram");
+    const socket = dgram.createSocket("udp4");
     const found = [];
 
-    const SSDP_ADDR = '239.255.255.250';
+    const SSDP_ADDR = "239.255.255.250";
     const SSDP_PORT = 1900;
-    const searchMessage = Buffer.from([
-      'M-SEARCH * HTTP/1.1',
-      'HOST: 239.255.255.250:1900',
-      'MAN: "ssdp:discover"',
-      'MX: 3',
-      'ST: roku:ecp',
-      '',
-      ''
-    ].join('\r\n'));
+    const searchMessage = Buffer.from(
+      [
+        "M-SEARCH * HTTP/1.1",
+        "HOST: 239.255.255.250:1900",
+        'MAN: "ssdp:discover"',
+        "MX: 3",
+        "ST: roku:ecp",
+        "",
+        "",
+      ].join("\r\n")
+    );
 
-    socket.on('message', (msg, rinfo) => {
+    socket.on("message", (msg, rinfo) => {
       const message = msg.toString();
-      if ((message.includes('Roku') || message.includes('roku')) && !found.includes(rinfo.address)) {
+      if (
+        (message.includes("Roku") || message.includes("roku")) &&
+        !found.includes(rinfo.address)
+      ) {
         found.push(rinfo.address);
       }
     });
 
-    socket.on('error', () => {
+    socket.on("error", () => {
       socket.close();
       resolve([]);
     });
 
     try {
       socket.bind(() => {
-        socket.send(searchMessage, 0, searchMessage.length, SSDP_PORT, SSDP_ADDR);
+        socket.send(
+          searchMessage,
+          0,
+          searchMessage.length,
+          SSDP_PORT,
+          SSDP_ADDR
+        );
       });
     } catch (err) {
       resolve([]);
@@ -966,8 +1071,8 @@ async function scanForRokuDevices() {
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
       for (const iface of interfaces[name]) {
-        if (iface.family === 'IPv4' && !iface.internal) {
-          const parts = iface.address.split('.');
+        if (iface.family === "IPv4" && !iface.internal) {
+          const parts = iface.address.split(".");
           return `${parts[0]}.${parts[1]}.${parts[2]}`;
         }
       }
@@ -983,9 +1088,9 @@ async function scanForRokuDevices() {
     // Scan a limited range for performance (typically home routers use .1-.254)
     // We'll scan in chunks to avoid overwhelming the network
     const ranges = [
-      [1, 50],    // Common router/device range
+      [1, 50], // Common router/device range
       [100, 150], // Common DHCP range
-      [200, 254]  // Upper DHCP range
+      [200, 254], // Upper DHCP range
     ];
 
     for (const [start, end] of ranges) {
@@ -1034,19 +1139,24 @@ async function scanForRokuDevices() {
 // Function to build and deploy Roku app
 async function buildAndDeployRokuApp(rokuIp, username, password) {
   return new Promise((resolve, reject) => {
-    const archiver = require('archiver');
+    const archiver = require("archiver");
 
     // Create zip of rokuapp directory
-    const zipPath = path.join(__dirname, 'rokuapp.zip');
+    const zipPath = path.join(__dirname, "rokuapp.zip");
     const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = archiver("zip", { zlib: { level: 9 } });
 
-    output.on('close', () => {
+    output.on("close", () => {
       console.log(`Roku app package created: ${archive.pointer()} bytes`);
 
       // Update MainScene.brs with current URL before deploying
-      const mainScenePath = path.join(__dirname, 'rokuapp', 'components', 'MainScene.brs');
-      let mainSceneContent = fs.readFileSync(mainScenePath, 'utf8');
+      const mainScenePath = path.join(
+        __dirname,
+        "rokuapp",
+        "components",
+        "MainScene.brs"
+      );
+      let mainSceneContent = fs.readFileSync(mainScenePath, "utf8");
 
       // Replace URL in the config section
       mainSceneContent = mainSceneContent.replace(
@@ -1055,94 +1165,107 @@ async function buildAndDeployRokuApp(rokuIp, username, password) {
       );
 
       // Write to temp location
-      const tempMainScenePath = path.join(__dirname, 'MainScene.brs.tmp');
+      const tempMainScenePath = path.join(__dirname, "MainScene.brs.tmp");
       fs.writeFileSync(tempMainScenePath, mainSceneContent);
 
       // Recreate zip with updated file
       const output2 = fs.createWriteStream(zipPath);
-      const archive2 = archiver('zip', { zlib: { level: 9 } });
+      const archive2 = archiver("zip", { zlib: { level: 9 } });
 
-      output2.on('close', async () => {
+      output2.on("close", async () => {
         // Deploy to Roku using curl (handles Digest auth automatically)
-        const { spawn } = require('child_process');
+        const { spawn } = require("child_process");
 
         const curlArgs = [
-          '--digest',
-          '-u', `${username}:${password}`,
-          '-F', 'mysubmit=Replace',
-          '-F', `archive=@${zipPath}`,
-          `http://${rokuIp}/plugin_install`
+          "--digest",
+          "-u",
+          `${username}:${password}`,
+          "-F",
+          "mysubmit=Replace",
+          "-F",
+          `archive=@${zipPath}`,
+          `http://${rokuIp}/plugin_install`,
         ];
 
-        const curl = spawn('curl', curlArgs);
-        let output = '';
-        let errorOutput = '';
+        const curl = spawn("curl", curlArgs);
+        let output = "";
+        let errorOutput = "";
 
-        curl.stdout.on('data', (data) => {
+        curl.stdout.on("data", (data) => {
           output += data.toString();
         });
 
-        curl.stderr.on('data', (data) => {
+        curl.stderr.on("data", (data) => {
           errorOutput += data.toString();
         });
 
-        curl.on('close', (code) => {
+        curl.on("close", (code) => {
           // Clean up
           if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
-          if (fs.existsSync(tempMainScenePath)) fs.unlinkSync(tempMainScenePath);
+          if (fs.existsSync(tempMainScenePath))
+            fs.unlinkSync(tempMainScenePath);
 
           if (code === 0) {
-            console.log('Roku app deployed successfully');
-            console.log('Response:', output);
+            console.log("Roku app deployed successfully");
+            console.log("Response:", output);
             resolve();
           } else {
-            console.error('curl stderr:', errorOutput);
-            reject(new Error(`Deployment failed with exit code ${code}: ${errorOutput}`));
+            console.error("curl stderr:", errorOutput);
+            reject(
+              new Error(
+                `Deployment failed with exit code ${code}: ${errorOutput}`
+              )
+            );
           }
         });
 
-        curl.on('error', (error) => {
+        curl.on("error", (error) => {
           // Clean up on error
           if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
-          if (fs.existsSync(tempMainScenePath)) fs.unlinkSync(tempMainScenePath);
+          if (fs.existsSync(tempMainScenePath))
+            fs.unlinkSync(tempMainScenePath);
           reject(new Error(`Failed to execute curl: ${error.message}`));
         });
       });
 
-      archive2.on('error', (err) => {
+      archive2.on("error", (err) => {
         reject(err);
       });
 
       archive2.pipe(output2);
 
       // Add all roku app files with updated MainScene.brs
-      archive2.directory(path.join(__dirname, 'rokuapp', 'components'), 'components', {
-        ignore: ['MainScene.brs']
-      });
-      archive2.file(tempMainScenePath, { name: 'components/MainScene.brs' });
-      archive2.directory(path.join(__dirname, 'rokuapp', 'source'), 'source');
+      archive2.directory(
+        path.join(__dirname, "rokuapp", "components"),
+        "components",
+        {
+          ignore: ["MainScene.brs"],
+        }
+      );
+      archive2.file(tempMainScenePath, { name: "components/MainScene.brs" });
+      archive2.directory(path.join(__dirname, "rokuapp", "source"), "source");
 
       // Add images directory (contains app icons)
-      const imagesDir = path.join(__dirname, 'rokuapp', 'images');
+      const imagesDir = path.join(__dirname, "rokuapp", "images");
       if (fs.existsSync(imagesDir)) {
-        archive2.directory(imagesDir, 'images');
+        archive2.directory(imagesDir, "images");
       }
 
       // Add manifest
-      const manifestPath = path.join(__dirname, 'rokuapp', 'manifest');
+      const manifestPath = path.join(__dirname, "rokuapp", "manifest");
       if (fs.existsSync(manifestPath)) {
-        archive2.file(manifestPath, { name: 'manifest' });
+        archive2.file(manifestPath, { name: "manifest" });
       }
 
       archive2.finalize();
     });
 
-    archive.on('error', (err) => {
+    archive.on("error", (err) => {
       reject(err);
     });
 
     archive.pipe(output);
-    archive.directory(path.join(__dirname, 'rokuapp'), false);
+    archive.directory(path.join(__dirname, "rokuapp"), false);
     archive.finalize();
   });
 }
@@ -1151,10 +1274,10 @@ http.listen(port, () => {
   console.log(`Serving http://localhost${port == 80 ? "" : `:${port}`}`);
 
   // Fetch missing thumbnails on startup
-  console.log('Checking for missing thumbnails...');
-  const getThumbnails = require('./diskrip/get_thumbnails.js');
-  getThumbnails.main().catch(error => {
-    console.error('Error fetching thumbnails on startup:', error.message);
+  console.log("Checking for missing thumbnails...");
+  const getThumbnails = require("./diskrip/get_thumbnails.js");
+  getThumbnails.main().catch((error) => {
+    console.error("Error fetching thumbnails on startup:", error.message);
   });
 });
 
