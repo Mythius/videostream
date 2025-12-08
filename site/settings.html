@@ -603,12 +603,20 @@
             <p style="color: rgba(255, 255, 255, 0.7)">
               Real-time notifications from the disc ripper service
             </p>
-            <button
-              class="btn btn-secondary small-btn"
-              onclick="clearNotifications()"
-            >
-              Clear History
-            </button>
+            <div style="display: flex; gap: 10px;">
+              <button
+                class="btn btn-secondary small-btn"
+                onclick="loadNotifications()"
+              >
+                🔄 Refresh
+              </button>
+              <button
+                class="btn btn-secondary small-btn"
+                onclick="clearNotifications()"
+              >
+                Clear History
+              </button>
+            </div>
           </div>
 
           <div
