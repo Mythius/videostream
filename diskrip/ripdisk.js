@@ -628,14 +628,17 @@ async function convertToMP4(mkvFile, outputFolder, outputFilename = null, movieN
 
         // Create a log file for ffmpeg output
         const logFile = path.join(config.tempFolder, `ffmpeg-${Date.now()}.log`);
-        const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+        const logFd = fs.openSync(logFile, 'a');
 
         // Spawn ffmpeg as a detached process
         // This allows it to continue running even if the parent process exits
         const ffmpeg = spawn('ffmpeg', args, {
             detached: true,
-            stdio: ['ignore', logStream, logStream]
+            stdio: ['ignore', logFd, logFd]
         });
+
+        // Close the file descriptor in parent process (child has its own copy)
+        fs.closeSync(logFd);
 
         // Unref the child process so parent can exit independently
         ffmpeg.unref();
