@@ -919,6 +919,92 @@ async function checkForDisc() {
 }
 
 /**
+ * Scan temp folder for orphaned MKV files and convert them to MP4
+ * This handles cases where conversion may have failed or was interrupted
+ */
+async function processOrphanedMkvFiles() {
+    try {
+        log('Checking for orphaned MKV files in temp folder...');
+
+        // Function to recursively find all MKV files in a directory
+        function findMkvFiles(dir, fileList = []) {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                const filePath = path.join(dir, file);
+                const stat = fs.statSync(filePath);
+                if (stat.isDirectory()) {
+                    findMkvFiles(filePath, fileList);
+                } else if (file.endsWith('.mkv')) {
+                    fileList.push(filePath);
+                }
+            });
+            return fileList;
+        }
+
+        // Find all MKV files in temp folder and subfolders
+        const mkvFiles = findMkvFiles(config.tempFolder);
+
+        if (mkvFiles.length === 0) {
+            log('No orphaned MKV files found');
+            return;
+        }
+
+        log(`Found ${mkvFiles.length} orphaned MKV file(s):`);
+        mkvFiles.forEach(file => log(`  - ${file}`));
+
+        // Determine output folder
+        let finalOutputFolder = outputFolder;
+        if (config.outputSubfolder && config.outputSubfolder.trim()) {
+            finalOutputFolder = path.join(outputFolder, config.outputSubfolder.trim());
+        }
+        if (!fs.existsSync(finalOutputFolder)) {
+            fs.mkdirSync(finalOutputFolder, { recursive: true });
+            log(`Created output folder: ${finalOutputFolder}`);
+        }
+
+        // Process each MKV file
+        for (let i = 0; i < mkvFiles.length; i++) {
+            const mkvFile = mkvFiles[i];
+            const basename = path.basename(mkvFile, '.mkv');
+
+            // Try to extract a human-readable name from the filename or parent folder
+            const parentFolder = path.basename(path.dirname(mkvFile));
+            let movieName = parentFolder;
+
+            // If the parent folder is just the temp folder, use the basename
+            if (parentFolder === path.basename(config.tempFolder)) {
+                movieName = basename;
+            }
+
+            // Humanize the name
+            const displayName = humanizeName(movieName);
+            const outputFilename = `${displayName}.mp4`;
+
+            // Check if MP4 already exists in output folder
+            const mp4Path = path.join(finalOutputFolder, outputFilename);
+            if (fs.existsSync(mp4Path)) {
+                log(`Skipping ${basename}.mkv - MP4 already exists at ${mp4Path}`);
+                continue;
+            }
+
+            try {
+                log(`Converting orphaned MKV ${i + 1}/${mkvFiles.length}: ${basename}.mkv`);
+                sendNotification('info', 'Recovering Orphaned File', `Converting "${displayName}" to MP4`);
+                await convertToMP4(mkvFile, finalOutputFolder, outputFilename, displayName);
+                log(`✓ Successfully started conversion for orphaned MKV (running in background)`);
+            } catch (conversionError) {
+                log(`✗ Failed to convert orphaned MKV ${basename}.mkv: ${conversionError.message}`);
+                sendNotification('error', 'Recovery Failed', `Failed to convert orphaned MKV "${displayName}"`);
+            }
+        }
+
+        log('Orphaned MKV processing complete');
+    } catch (error) {
+        log(`Error processing orphaned MKV files: ${error.message}`);
+    }
+}
+
+/**
  * Main entry point
  */
 async function main() {
@@ -979,6 +1065,10 @@ async function main() {
 
     log('✓ Temp folder is writable');
     log('✓ Output folder is writable');
+
+    // Check for and process any orphaned MKV files on startup
+    await processOrphanedMkvFiles();
+
     log(`Waiting for disc insertion (checking every ${CHECK_INTERVAL_MS / 1000} seconds)...`);
 
     // Check immediately on startup
