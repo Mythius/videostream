@@ -833,6 +833,7 @@ app.post("/api/notifications/clear", requireAuth, (req, res) => {
 // API: Receive notification from ripper (no auth required - internal service)
 app.post("/api/ripper-notification", express.json(), (req, res) => {
   const { type, title, message } = req.body;
+  console.log('Notification received from ripper:', type, title, message);
   if (type && title && message) {
     addNotification(type, title, message);
   }

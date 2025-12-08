@@ -7,6 +7,7 @@
     "test": "node diskrip/ripdisk.js",
     "test:eject": "node diskrip/test-eject.js",
     "start": "node server.js",
+    "start:debug": "node --inspect server.js",
     "desktop": "npx electron App/electron.js",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
