@@ -1193,11 +1193,22 @@
 
       async function loadNotifications() {
         try {
-          const response = await fetch("/api/notifications");
+          const response = await fetch("/api/notifications", {
+            credentials: "include",
+          });
+
+          if (response.status === 401) {
+            console.log("Not authenticated for notifications");
+            return;
+          }
+
           const notifications = await response.json();
           renderNotifications(notifications);
         } catch (error) {
           console.error("Error loading notifications:", error);
+          const container = document.getElementById("notificationsList");
+          container.innerHTML =
+            '<p style="text-align: center; color: rgba(255,100,100,0.7); padding: 20px;">Error loading notifications. Please try refreshing.</p>';
         }
       }
 
@@ -1256,7 +1267,10 @@
         }
 
         try {
-          await fetch("/api/notifications/clear", { method: "POST" });
+          await fetch("/api/notifications/clear", {
+            method: "POST",
+            credentials: "include",
+          });
           loadNotifications();
         } catch (error) {
           alert("Error clearing notifications: " + error.message);

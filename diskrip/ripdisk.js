@@ -70,18 +70,24 @@ function sendNotification(type, title, message) {
             }
         };
 
+        log(`Sending notification to http://localhost:${port}/api/ripper-notification: ${type} - ${title}`);
+
         const req = http.request(options, (res) => {
-            // Silently handle response
+            if (res.statusCode === 200) {
+                log(`✓ Notification sent successfully`);
+            } else {
+                log(`Warning: Notification returned status ${res.statusCode}`);
+            }
         });
 
         req.on('error', (error) => {
-            // Silently handle errors - notifications are optional
+            log(`Warning: Failed to send notification: ${error.message}`);
         });
 
         req.write(data);
         req.end();
     } catch (error) {
-        // Silently handle errors - notifications are optional
+        log(`Warning: Error sending notification: ${error.message}`);
     }
 }
 
