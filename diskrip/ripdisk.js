@@ -53,8 +53,7 @@ function sendNotification(type, title, message) {
     console.log(`Preparing to send notification: ${type} - ${title}`);
     try {
         // Load config to get notification URL
-        const rootConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
-        const notificationUrl = rootConfig.notificationUrl;
+        const notificationUrl = config.url;
 
         if (!notificationUrl) {
             log("Warning: notificationUrl not configured in config.json");
