@@ -41,6 +41,7 @@ let config = {
     autoEject: true,
     notifyOnComplete: true,
     keepMKV: false,
+    outputSubfolder: "", // Optional subfolder for organizing videos (e.g., "The Office Season 1")
     mp4Settings: {
       videoCodec: "libx264",
       audioCodec: "aac",
@@ -247,6 +248,106 @@ app.get("/movies/:filename", (req, res) => {
   });
 });
 
+// Route for series episodes (streaming from subfolder)
+app.get("/series/:seriesName/:episodeName", (req, res) => {
+  const filePath = path.join(config.videoDirectory, req.params.seriesName, req.params.episodeName) + ".mp4";
+  fs.stat(filePath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      return res.sendStatus(404);
+    }
+
+    const range = req.headers.range;
+    if (!range) {
+      res.writeHead(200, {
+        "Content-Length": stats.size,
+        "Content-Type": "video/mp4",
+      });
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+
+    const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
+    const start = parseInt(startStr, 10);
+    const end = endStr ? parseInt(endStr, 10) : stats.size - 1;
+    const chunkSize = end - start + 1;
+
+    const file = fs.createReadStream(filePath, { start, end });
+    res.writeHead(206, {
+      "Content-Range": `bytes ${start}-${end}/${stats.size}`,
+      "Accept-Ranges": "bytes",
+      "Content-Length": chunkSize,
+      "Content-Type": "video/mp4",
+    });
+
+    file.pipe(res);
+  });
+});
+
+// Route for series page (list episodes)
+app.get("/series/:seriesName", (req, res) => {
+  try {
+    const seriesName = decodeURIComponent(req.params.seriesName);
+    const seriesPath = path.join(config.videoDirectory, seriesName);
+
+    if (!fs.existsSync(seriesPath) || !fs.statSync(seriesPath).isDirectory()) {
+      return res.sendStatus(404);
+    }
+
+    // Get all episodes in the folder
+    const episodes = fs.readdirSync(seriesPath)
+      .filter(f => f.endsWith('.mp4'))
+      .sort()
+      .map(f => {
+        const name = f.replace(/\.mp4$/i, '');
+        return {
+          name: name,
+          url: `/series/${encodeURIComponent(seriesName)}/${encodeURIComponent(name)}`,
+          title: name
+        };
+      });
+
+    // Read template and generate episode list
+    const templatePath = path.join(mainfolder, "site", "series-template.html");
+    let template;
+
+    if (fs.existsSync(templatePath)) {
+      template = fs.readFileSync(templatePath, "utf8");
+    } else {
+      // Fallback simple HTML if template doesn't exist
+      template = `<!DOCTYPE html>
+<html>
+<head>
+  <title>${seriesName}</title>
+  <style>
+    body { background: #141414; color: white; font-family: Arial; padding: 20px; }
+    h1 { margin-bottom: 30px; }
+    .episode { background: #222; padding: 15px; margin: 10px 0; border-radius: 5px; cursor: pointer; }
+    .episode:hover { background: #333; }
+    .back-btn { display: inline-block; padding: 10px 20px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-btn">← Back to Home</a>
+  <h1>${seriesName}</h1>
+  <div id="episodes">{{EPISODES}}</div>
+</body>
+</html>`;
+    }
+
+    const episodeHTML = episodes.map((ep, i) => `
+      <div class="episode" onclick="window.location.href='${ep.url}'">
+        <strong>Episode ${i + 1}:</strong> ${ep.title}
+      </div>
+    `).join('');
+
+    const html = template.replace('{{EPISODES}}', episodeHTML).replace('{{SERIES_NAME}}', seriesName);
+    res.send(html);
+  } catch (err) {
+    console.error("Error loading series:", err);
+    res.status(500).send("Error loading series");
+  }
+});
+
 /**
  * Convert image to PNG with 2:3 aspect ratio (portrait) using ImageMagick/ffmpeg
  * Preserves the original aspect ratio without cropping
@@ -316,15 +417,63 @@ function getMovieThumbnail(movieName) {
   }
 }
 
+// Helper function to scan for videos and folders
+function getMoviesAndFolders() {
+  const videoDir = config.videoDirectory;
+  const items = fs.readdirSync(videoDir).filter((f) => !f.startsWith(".")).sort();
+
+  const result = [];
+
+  for (const item of items) {
+    const itemPath = path.join(videoDir, item);
+    const stat = fs.statSync(itemPath);
+
+    if (stat.isDirectory()) {
+      // It's a folder (series) - check if it has .mp4 files
+      const videosInFolder = fs.readdirSync(itemPath)
+        .filter(f => f.endsWith('.mp4'))
+        .sort();
+
+      if (videosInFolder.length > 0) {
+        result.push({
+          type: 'folder',
+          name: item,
+          url: `/series/${encodeURIComponent(item)}`,
+          thumbnail: getMovieThumbnail(item),
+          title: item,
+          episodeCount: videosInFolder.length
+        });
+      }
+    } else if (item.endsWith('.mp4')) {
+      // It's a movie file
+      const name = item.replace(/\.mp4$/i, '');
+      result.push({
+        type: 'movie',
+        name: name,
+        url: `/movies/${encodeURIComponent(name)}`,
+        thumbnail: getMovieThumbnail(name),
+        title: name
+      });
+    }
+  }
+
+  return result;
+}
+
 // Helper function to generate movie card HTML
 function generateMovieCardHTML(movie) {
-  return `
-                <div class="movie-card" onclick="window.location.href='${movie.url}'">
-                    <img src="${movie.thumbnail}" alt="${movie.title}" class="movie-poster" onerror="this.src='/clapboard.jpg'">
-                    <div class="movie-info">
-                        <div class="movie-title">${movie.title}</div>
-                    </div>
-                </div>`;
+  const badge = movie.type === 'folder' ?
+    `<div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); padding: 5px 10px; border-radius: 5px; font-size: 12px;">${movie.episodeCount} episodes</div>` :
+    '';
+
+  return /*html*/`
+  <div class="movie-card" onclick="window.location.href='${movie.url}'">
+      <img src="${movie.thumbnail}" alt="${movie.title}" class="movie-poster" onerror="this.src='/clapboard.jpg'">
+      ${badge}
+      <div class="movie-info">
+          <div class="movie-title">${movie.title}</div>
+      </div>
+  </div>`;
 }
 
 app.get("/", (req, res) => {
@@ -333,22 +482,8 @@ app.get("/", (req, res) => {
     const templatePath = path.join(mainfolder, "site", "index-template.html");
     const template = fs.readFileSync(templatePath, "utf8");
 
-    // Scan video directory
-    const videoDir = config.videoDirectory;
-    const files = fs.readdirSync(videoDir)
-      .filter((f) => !f.startsWith("."))
-      .filter((f) => f.match(".mp4"))
-      .sort();
-
-    // Generate movie data array
-    const moviesData = files.map((f) => {
-      const name = f.replace(/\.[^/.]+$/, ""); // Remove extension
-      return {
-        url: `/movies/${encodeURIComponent(name)}`,
-        thumbnail: getMovieThumbnail(name),
-        title: name,
-      };
-    });
+    // Get all movies and folders
+    const moviesData = getMoviesAndFolders();
 
     // Generate initial HTML for first 16 movies (server-side rendering)
     const initialMovies = moviesData.slice(0, 16);
@@ -369,40 +504,25 @@ app.get("/", (req, res) => {
 });
 
 app.get("/json", (req, res) => {
-  const videoDir = config.videoDirectory;
-  fs.readdir(videoDir, (err, files) => {
-    if (err) {
-      console.log(err);
-      res.status(500).send("Error reading video directory");
-      return;
-    }
+  try {
+    const items = getMoviesAndFolders();
 
-    function getImage(name) {
-      const movieName = name.replace(/\.[^/.]+$/, "");
-      const imgPath = path.join(mainfolder, "site", "imgs", movieName + ".png");
-      if (fs.existsSync(imgPath)) {
-        return `${config.url}/imgs/${encodeURIComponent(movieName)}.png`;
-      } else {
-        return `${config.url}/clapboard.jpg`;
-      }
-    }
-
-    // Filter out non-files and hidden files if needed
-    const links = files
-      .filter((f) => !f.startsWith("."))
-      .filter((f) => f.match(".mp4"))
-      .sort()
-      .map((e) => {
-        const movieName = e.replace(/\.[^/.]+$/, ""); // Remove .mp4 extension
-        return {
-          url: `${config.url}/movies/${encodeURIComponent(movieName)}`,
-          thumbnail: getImage(e),
-          title: movieName,
-        };
-      });
+    // Convert to absolute URLs for Roku
+    const links = items.map(item => ({
+      url: item.type === 'folder' ?
+        `${config.url}/series/${encodeURIComponent(item.name)}` :
+        `${config.url}/movies/${encodeURIComponent(item.name)}`,
+      thumbnail: item.thumbnail.startsWith('http') ? item.thumbnail : `${config.url}${item.thumbnail}`,
+      title: item.title,
+      type: item.type,
+      episodeCount: item.episodeCount
+    }));
 
     res.send(links);
-  });
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Error reading video directory");
+  }
 });
 
 // Middleware to check if request is from localhost
@@ -638,13 +758,14 @@ app.get("/api/ripper-settings", requireAuth, (req, res) => {
     minTitleLength: config.diskrip.minTitleLength,
     autoEject: config.diskrip.autoEject,
     notifyOnComplete: config.diskrip.notifyOnComplete,
-    keepMKV: config.diskrip.keepMKV
+    keepMKV: config.diskrip.keepMKV,
+    outputSubfolder: config.diskrip.outputSubfolder || ""
   });
 });
 
 // API: Update ripper settings
 app.post("/api/ripper-settings", requireAuth, express.json(), (req, res) => {
-  const { titlesToRip, minTitleLength, autoEject, notifyOnComplete, keepMKV } = req.body;
+  const { titlesToRip, minTitleLength, autoEject, notifyOnComplete, keepMKV, outputSubfolder } = req.body;
 
   try {
     if (titlesToRip !== undefined) config.diskrip.titlesToRip = titlesToRip;
@@ -652,6 +773,7 @@ app.post("/api/ripper-settings", requireAuth, express.json(), (req, res) => {
     if (autoEject !== undefined) config.diskrip.autoEject = autoEject;
     if (notifyOnComplete !== undefined) config.diskrip.notifyOnComplete = notifyOnComplete;
     if (keepMKV !== undefined) config.diskrip.keepMKV = keepMKV;
+    if (outputSubfolder !== undefined) config.diskrip.outputSubfolder = outputSubfolder.trim();
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 

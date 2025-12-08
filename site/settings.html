@@ -442,6 +442,14 @@
             <h2>Disc Ripper Settings</h2>
 
             <div class="form-group">
+                <label for="outputSubfolder">Output Folder (optional)</label>
+                <input type="text" id="outputSubfolder" placeholder="e.g., The Office Season 1">
+                <small style="color: rgba(255, 255, 255, 0.6); display: block; margin-top: 5px;">
+                    Leave empty for movies, or enter a folder name for TV shows/series (e.g., "Breaking Bad Season 1")
+                </small>
+            </div>
+
+            <div class="form-group">
                 <label for="titlesToRip">Number of Titles to Rip</label>
                 <input type="number" id="titlesToRip" min="1" max="10" placeholder="1">
                 <small style="color: rgba(255, 255, 255, 0.6); display: block; margin-top: 5px;">
@@ -887,6 +895,7 @@
                     return;
                 }
                 const settings = await response.json();
+                document.getElementById('outputSubfolder').value = settings.outputSubfolder || '';
                 document.getElementById('titlesToRip').value = settings.titlesToRip || 1;
                 document.getElementById('minTitleLength').value = settings.minTitleLength || 300;
                 document.getElementById('autoEject').checked = settings.autoEject !== undefined ? settings.autoEject : true;
@@ -899,6 +908,7 @@
 
         async function saveRipperSettings() {
             const settings = {
+                outputSubfolder: document.getElementById('outputSubfolder').value.trim(),
                 titlesToRip: parseInt(document.getElementById('titlesToRip').value),
                 minTitleLength: parseInt(document.getElementById('minTitleLength').value),
                 autoEject: document.getElementById('autoEject').checked,

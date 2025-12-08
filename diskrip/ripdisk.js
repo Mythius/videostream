@@ -642,10 +642,14 @@ async function ripDisc() {
             await ejectDisc();
         }
 
-        // Create output folder
-        const finalOutputFolder = outputFolder;
+        // Create output folder (with optional subfolder)
+        let finalOutputFolder = outputFolder;
+        if (config.outputSubfolder && config.outputSubfolder.trim()) {
+            finalOutputFolder = path.join(outputFolder, config.outputSubfolder.trim());
+        }
         if (!fs.existsSync(finalOutputFolder)) {
             fs.mkdirSync(finalOutputFolder, { recursive: true });
+            log(`Created output folder: ${finalOutputFolder}`);
         }
 
         // Notify that compression is starting
