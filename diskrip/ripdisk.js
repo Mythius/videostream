@@ -52,7 +52,9 @@ function sendNotification(type, title, message) {
   console.log(`Preparing to send notification: ${type} - ${title}`);
   try {
     // Load config to get notification URL
-    const notificationUrl = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8")).url;
+    const notificationUrl = JSON.parse(
+      fs.readFileSync(CONFIG_FILE, "utf8")
+    ).url;
 
     if (!notificationUrl) {
       log("Warning: notificationUrl not configured in config.json");
@@ -63,7 +65,7 @@ function sendNotification(type, title, message) {
 
     log(`Sending notification to ${notificationUrl}: ${type} - ${title}`);
 
-    fetch(notificationUrl, {
+    fetch(notificationUrl + "/api/ripper-notification", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
