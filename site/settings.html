@@ -141,11 +141,11 @@
         padding: 15px;
         margin-bottom: 10px;
         border-radius: 8px;
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 60px 1fr auto auto;
         align-items: center;
         gap: 15px;
-        width: fit-content;
+        width: 100%;
       }
 
       .movie-item img {
@@ -157,16 +157,18 @@
 
       .movie-info {
         flex: 1;
+        min-width: 0;
       }
 
       .movie-name {
         font-weight: 600;
         margin-bottom: 5px;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .movie-actions {
-        display: flex;
-        gap: 10px;
+        display: contents;
       }
 
       .small-btn {
