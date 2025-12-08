@@ -529,15 +529,91 @@ async function ripToMKV(discInfo) {
 }
 
 /**
- * Convert MKV to MP4 using FFmpeg
+ * Monitor ffmpeg process completion and send notification when done
  */
-async function convertToMP4(mkvFile, outputFolder, outputFilename = null) {
+function monitorFFmpegCompletion(pid, mp4File, movieName, logFile) {
+    const checkInterval = 5000; // Check every 5 seconds
+    let lastSize = 0;
+    let unchangedCount = 0;
+
+    log(`Starting background monitor for ffmpeg PID ${pid}`);
+
+    const monitor = setInterval(() => {
+        // Check if process is still running
+        let processRunning = false;
+        try {
+            process.kill(pid, 0);
+            processRunning = true;
+        } catch (err) {
+            processRunning = false;
+        }
+
+        // Check if MP4 file exists and get its size
+        let currentSize = 0;
+        let fileExists = false;
+        try {
+            const stats = fs.statSync(mp4File);
+            currentSize = stats.size;
+            fileExists = true;
+        } catch (err) {
+            fileExists = false;
+        }
+
+        // If process is not running
+        if (!processRunning) {
+            clearInterval(monitor);
+
+            if (fileExists && currentSize > 0) {
+                // Process finished and file exists - success!
+                log(`✓ FFmpeg compression completed for "${movieName}"`);
+                log(`Final file size: ${(currentSize / 1024 / 1024).toFixed(2)} MB`);
+                sendNotification('success', 'Compression Complete', `"${movieName}" is now ready to stream`);
+            } else {
+                // Process finished but no file - error
+                log(`✗ FFmpeg process ended but no output file found for "${movieName}"`);
+                sendNotification('error', 'Compression Failed', `Failed to compress "${movieName}". Check logs for details.`);
+
+                // Try to read log file for error details
+                try {
+                    const logContent = fs.readFileSync(logFile, 'utf8');
+                    log(`FFmpeg log:\n${logContent.slice(-1000)}`); // Last 1000 chars
+                } catch (readErr) {
+                    log(`Could not read ffmpeg log file: ${readErr.message}`);
+                }
+            }
+            return;
+        }
+
+        // Process is still running - check if file is still growing
+        if (fileExists) {
+            if (currentSize === lastSize) {
+                unchangedCount++;
+                // If file hasn't changed in 30 seconds (6 checks), might be stalled
+                if (unchangedCount >= 6) {
+                    log(`Warning: MP4 file size hasn't changed in ${unchangedCount * checkInterval / 1000}s`);
+                }
+            } else {
+                unchangedCount = 0;
+                log(`Compression in progress: ${(currentSize / 1024 / 1024).toFixed(2)} MB (PID: ${pid})`);
+            }
+            lastSize = currentSize;
+        }
+    }, checkInterval);
+}
+
+/**
+ * Convert MKV to MP4 using FFmpeg
+ * Runs as a detached background process to survive service restarts
+ */
+async function convertToMP4(mkvFile, outputFolder, outputFilename = null, movieName = null) {
     return new Promise((resolve, reject) => {
         const basename = path.basename(mkvFile, '.mkv');
         const mp4Name = outputFilename || `${basename}.mp4`;
         const mp4File = path.join(outputFolder, mp4Name);
+        const displayName = movieName || mp4Name;
 
         log(`Converting ${basename}.mkv to MP4 as ${mp4Name}...`);
+        log('Starting ffmpeg as detached process to survive service restarts...');
 
         const args = [
             '-i', mkvFile,
@@ -550,45 +626,53 @@ async function convertToMP4(mkvFile, outputFolder, outputFilename = null) {
             mp4File
         ];
 
-        const ffmpeg = spawn('ffmpeg', args);
-        let ffmpegOutput = '';
-        let lastError = '';
+        // Create a log file for ffmpeg output
+        const logFile = path.join(config.tempFolder, `ffmpeg-${Date.now()}.log`);
+        const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
-        ffmpeg.stderr.on('data', (data) => {
-            const text = data.toString();
-            ffmpegOutput += text;
-
-            // Keep last error message
-            if (text.toLowerCase().includes('error') || text.toLowerCase().includes('invalid')) {
-                lastError = text.trim();
-            }
-
-            // Log progress
-            const timeMatch = text.match(/time=(\d+):(\d+):(\d+)/);
-            if (timeMatch) {
-                log(`Encoding time: ${timeMatch[1]}:${timeMatch[2]}:${timeMatch[3]}`);
-            }
+        // Spawn ffmpeg as a detached process
+        // This allows it to continue running even if the parent process exits
+        const ffmpeg = spawn('ffmpeg', args, {
+            detached: true,
+            stdio: ['ignore', logStream, logStream]
         });
 
-        ffmpeg.on('error', (err) => {
-            log(`Failed to start ffmpeg: ${err.message}`);
-            reject(new Error(`Failed to start FFmpeg: ${err.message}`));
-        });
+        // Unref the child process so parent can exit independently
+        ffmpeg.unref();
 
-        ffmpeg.on('close', (code) => {
-            if (code === 0) {
-                log(`Conversion completed: ${mp4Name}`);
+        log(`FFmpeg started as detached process (PID: ${ffmpeg.pid})`);
+        log(`FFmpeg output will be written to: ${logFile}`);
+
+        // Since the process is detached, we can't wait for it to complete
+        // Instead, we'll return immediately and let it run in the background
+        // The file will appear when conversion is complete
+
+        // Give ffmpeg a moment to start up and catch any immediate errors
+        setTimeout(() => {
+            // Check if process is still running (it should be)
+            try {
+                // This will throw if process doesn't exist
+                process.kill(ffmpeg.pid, 0);
+                log(`✓ FFmpeg process confirmed running (PID: ${ffmpeg.pid})`);
+                log(`Note: Conversion will continue in background. Check ${mp4File} for completion.`);
+
+                // Start monitoring the process for completion
+                monitorFFmpegCompletion(ffmpeg.pid, mp4File, displayName, logFile);
+
                 resolve(mp4File);
-            } else {
-                // Provide detailed error message
-                const errorDetail = lastError || 'Unknown error';
-                log(`FFmpeg failed with exit code ${code}`);
-                log(`Last error: ${errorDetail}`);
-                log(`Full FFmpeg output (last 500 chars): ${ffmpegOutput.slice(-500)}`);
-
-                reject(new Error(`FFmpeg conversion failed (exit code ${code}): ${errorDetail}`));
+            } catch (err) {
+                // Process already died - probably an immediate error
+                log(`✗ FFmpeg process died immediately`);
+                // Try to read log file for error
+                try {
+                    const logContent = fs.readFileSync(logFile, 'utf8');
+                    log(`FFmpeg log:\n${logContent}`);
+                    reject(new Error(`FFmpeg failed to start. Check log: ${logFile}`));
+                } catch (readErr) {
+                    reject(new Error(`FFmpeg failed to start and log file could not be read`));
+                }
             }
-        });
+        }, 1000);
     });
 }
 
@@ -679,21 +763,24 @@ async function ripDisc() {
             const mkvFile = mkvFiles[i];
             const movieBase = humanizeName(discInfo.name);
             let outputFilename;
+            let displayName;
             if (mkvFiles.length === 1) {
                 outputFilename = `${movieBase}.mp4`;
+                displayName = movieBase;
             } else {
                 // If multiple titles, append the original mkv basename to keep uniqueness
                 const titleBasename = path.basename(mkvFile, '.mkv');
                 outputFilename = `${movieBase} - ${titleBasename}.mp4`;
+                displayName = `${movieBase} - Part ${i + 1}`;
             }
 
             try {
                 log(`Converting ${i + 1}/${mkvFiles.length}: ${path.basename(mkvFile)}`);
-                await convertToMP4(mkvFile, finalOutputFolder, outputFilename);
-                log(`✓ Successfully converted ${i + 1}/${mkvFiles.length}`);
+                await convertToMP4(mkvFile, finalOutputFolder, outputFilename, displayName);
+                log(`✓ Successfully started conversion ${i + 1}/${mkvFiles.length} (running in background)`);
             } catch (conversionError) {
-                log(`✗ Failed to convert ${path.basename(mkvFile)}: ${conversionError.message}`);
-                sendNotification('error', 'Compression Failed', `Failed to convert "${discInfo.name}" to MP4: ${conversionError.message}`);
+                log(`✗ Failed to start conversion ${path.basename(mkvFile)}: ${conversionError.message}`);
+                sendNotification('error', 'Compression Failed', `Failed to start converting "${displayName}": ${conversionError.message}`);
                 throw conversionError; // Re-throw to trigger main error handler
             }
         }
@@ -717,9 +804,11 @@ async function ripDisc() {
             fs.rmdirSync(outputPath, { recursive: true });
         }
 
-        log(`=== Ripping complete! Files saved to: ${finalOutputFolder} ===`);
-        notify('Ripping Complete', `${discInfo.name} has been ripped successfully!`);
-        sendNotification('success', 'Ready to Stream', `"${discInfo.name}" is now available for streaming`);
+        log(`=== Ripping and conversion started! ===`);
+        log(`MKV files created, MP4 conversion running in background`);
+        log(`Files will be saved to: ${finalOutputFolder}`);
+        notify('Ripping Complete', `${discInfo.name} is being compressed to MP4`);
+        sendNotification('info', 'Ripping Complete', `"${discInfo.name}" extracted. Compression running in background...`);
 
         // Fetch thumbnail for the newly ripped movie
         log('Fetching thumbnail for newly ripped movie...');
