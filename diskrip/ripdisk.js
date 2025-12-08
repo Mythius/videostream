@@ -551,9 +551,17 @@ async function convertToMP4(mkvFile, outputFolder, outputFilename = null) {
         ];
 
         const ffmpeg = spawn('ffmpeg', args);
+        let ffmpegOutput = '';
+        let lastError = '';
 
         ffmpeg.stderr.on('data', (data) => {
             const text = data.toString();
+            ffmpegOutput += text;
+
+            // Keep last error message
+            if (text.toLowerCase().includes('error') || text.toLowerCase().includes('invalid')) {
+                lastError = text.trim();
+            }
 
             // Log progress
             const timeMatch = text.match(/time=(\d+):(\d+):(\d+)/);
@@ -562,12 +570,23 @@ async function convertToMP4(mkvFile, outputFolder, outputFilename = null) {
             }
         });
 
+        ffmpeg.on('error', (err) => {
+            log(`Failed to start ffmpeg: ${err.message}`);
+            reject(new Error(`Failed to start FFmpeg: ${err.message}`));
+        });
+
         ffmpeg.on('close', (code) => {
             if (code === 0) {
                 log(`Conversion completed: ${mp4Name}`);
                 resolve(mp4File);
             } else {
-                reject(new Error(`FFmpeg exited with code ${code}`));
+                // Provide detailed error message
+                const errorDetail = lastError || 'Unknown error';
+                log(`FFmpeg failed with exit code ${code}`);
+                log(`Last error: ${errorDetail}`);
+                log(`Full FFmpeg output (last 500 chars): ${ffmpegOutput.slice(-500)}`);
+
+                reject(new Error(`FFmpeg conversion failed (exit code ${code}): ${errorDetail}`));
             }
         });
     });
@@ -668,7 +687,15 @@ async function ripDisc() {
                 outputFilename = `${movieBase} - ${titleBasename}.mp4`;
             }
 
-            await convertToMP4(mkvFile, finalOutputFolder, outputFilename);
+            try {
+                log(`Converting ${i + 1}/${mkvFiles.length}: ${path.basename(mkvFile)}`);
+                await convertToMP4(mkvFile, finalOutputFolder, outputFilename);
+                log(`✓ Successfully converted ${i + 1}/${mkvFiles.length}`);
+            } catch (conversionError) {
+                log(`✗ Failed to convert ${path.basename(mkvFile)}: ${conversionError.message}`);
+                sendNotification('error', 'Compression Failed', `Failed to convert "${discInfo.name}" to MP4: ${conversionError.message}`);
+                throw conversionError; // Re-throw to trigger main error handler
+            }
         }
 
         // Handle MKV files based on config
@@ -710,6 +737,16 @@ async function ripDisc() {
 
     } catch (error) {
         log('Error during ripping process: ' + (error.message || error));
+        log('Stack trace: ' + (error.stack || 'No stack trace available'));
+
+        // Send detailed notification (compression errors already sent above, this catches others)
+        // Check if error was already notified (compression errors send their own notification)
+        const errorMsg = error.message || error.toString();
+        if (!errorMsg.includes('FFmpeg') && !errorMsg.includes('convert')) {
+            // This is likely a ripping error, not compression
+            sendNotification('error', 'Ripping Failed', `Error during disc ripping: ${errorMsg}`);
+        }
+
         notify('Ripping Failed', 'An error occurred during disc ripping');
 
         // Try to eject disc even on error (cleanup)
