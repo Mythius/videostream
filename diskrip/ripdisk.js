@@ -3,7 +3,6 @@
 const { exec, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const fetch = require("node-fetch");
 // Load configuration from root directory
 const CONFIG_FILE = path.join(__dirname, "..", "config.json");
 let config;
