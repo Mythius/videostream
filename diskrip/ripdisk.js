@@ -3,8 +3,7 @@
 const { exec, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const http = require("http");
-
+const fetch = require("node-fetch");
 // Load configuration from root directory
 const CONFIG_FILE = path.join(__dirname, "..", "config.json");
 let config;
@@ -51,46 +50,43 @@ function log(message) {
  * Send notification to server
  */
 function sendNotification(type, title, message) {
-  console.log(`Preparing to send notification: ${type} - ${title}`);
-  try {
-    // Load config to get port
-    const rootConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
-    const port = rootConfig.port || 80;
+    console.log(`Preparing to send notification: ${type} - ${title}`);
+    try {
+        // Load config to get notification URL
+        const rootConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+        const notificationUrl = rootConfig.notificationUrl;
 
-    const data = JSON.stringify({ type, title, message });
+        if (!notificationUrl) {
+            log("Warning: notificationUrl not configured in config.json");
+            return;
+        }
 
-    const options = {
-      hostname: "localhost",
-      port: port,
-      path: "/api/ripper-notification",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": data.length,
-      },
-    };
+        const payload = { type, title, message };
 
-    console.log(
-      `Sending notification to http://localhost:${port}/api/ripper-notification: ${type} - ${title}`
-    );
+        log(
+            `Sending notification to ${notificationUrl}: ${type} - ${title}`
+        );
 
-    const req = http.request(options, (res) => {
-      if (res.statusCode === 200) {
-        log(`✓ Notification sent successfully`);
-      } else {
-        log(`Warning: Notification returned status ${res.statusCode}`);
-      }
-    });
-
-    req.on("error", (error) => {
-      log(`Warning: Failed to send notification: ${error.message}`);
-    });
-
-    req.write(data);
-    req.end();
-  } catch (error) {
-    log(`Warning: Error sending notification: ${error.message}`);
-  }
+        fetch(notificationUrl, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+        })
+            .then((res) => {
+                if (res.ok) {
+                    log(`✓ Notification sent successfully`);
+                } else {
+                    log(`Warning: Notification returned status ${res.status}`);
+                }
+            })
+            .catch((error) => {
+                log(`Warning: Failed to send notification: ${error.message}`);
+            });
+    } catch (error) {
+        log(`Warning: Error sending notification: ${error.message}`);
+    }
 }
 /**
  * Execute command and return promise
