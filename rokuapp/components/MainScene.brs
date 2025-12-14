@@ -144,8 +144,9 @@ sub loadFolderContents(folderUrl)
 
     ' Use the task node to load folder contents asynchronously
     m.loadingFolder = true
+
+    ' Just update URL - the task will auto-run when URL changes
     m.loader.url = folderUrl
-    m.loader.control = "RUN"
 end sub
 
 sub navigateBack()
@@ -159,8 +160,9 @@ sub navigateBack()
         ' Back to root - reload main content
         m.currentFolder = invalid
         m.loadingFolder = false
+
+        ' Just update URL - the task will auto-run when URL changes
         m.loader.url = m.baseUrl + "/json"
-        m.loader.control = "RUN"
     else
         ' Back to parent folder (if we support nested folders in the future)
         m.currentFolder = m.navigationStack.Peek()
