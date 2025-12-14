@@ -658,26 +658,48 @@ app.post("/update-video-directory", express.json(), (req, res) => {
   }
 });
 
-// API: Get movies list for settings page
+// API: Get movies list for settings page (includes both movies and folders)
 app.get("/api/movies-list", requireAuth, (req, res) => {
   try {
     const videoDir = config.videoDirectory;
-    const files = fs
+    const items = fs
       .readdirSync(videoDir)
       .filter((f) => !f.startsWith("."))
-      .filter((f) => f.endsWith(".mp4"))
       .sort();
 
-    const movies = files.map((f) => {
-      const name = f.replace(/\.mp4$/i, "");
-      return {
-        title: name,
-        thumbnail: getMovieThumbnail(name),
-        filename: f,
-      };
-    });
+    const result = [];
 
-    res.json(movies);
+    for (const item of items) {
+      const itemPath = path.join(videoDir, item);
+      const stat = fs.statSync(itemPath);
+
+      if (stat.isDirectory()) {
+        // It's a folder
+        const videosInFolder = fs
+          .readdirSync(itemPath)
+          .filter((f) => f.endsWith(".mp4"))
+          .length;
+
+        result.push({
+          type: "folder",
+          title: item,
+          thumbnail: getMovieThumbnail(item),
+          filename: item,
+          itemCount: videosInFolder,
+        });
+      } else if (item.endsWith(".mp4")) {
+        // It's a movie file
+        const name = item.replace(/\.mp4$/i, "");
+        result.push({
+          type: "movie",
+          title: name,
+          thumbnail: getMovieThumbnail(name),
+          filename: item,
+        });
+      }
+    }
+
+    res.json(result);
   } catch (error) {
     console.error("Error getting movies list:", error);
     res.status(500).json({ error: error.message });
@@ -734,6 +756,292 @@ app.post("/api/rename-movie", requireAuth, express.json(), async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Error renaming movie:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Delete movie
+app.post("/api/delete-movie", requireAuth, express.json(), async (req, res) => {
+  const { movieName } = req.body;
+
+  if (!movieName) {
+    return res.status(400).json({ error: "Movie name is required" });
+  }
+
+  try {
+    const videoDir = config.videoDirectory;
+    const imgsDir = path.join(mainfolder, "site", "imgs");
+
+    const videoPath = path.join(videoDir, movieName + ".mp4");
+    const thumbnailPath = path.join(imgsDir, movieName + ".png");
+
+    // Check if video exists
+    if (!fs.existsSync(videoPath)) {
+      return res.status(404).json({ error: "Movie not found" });
+    }
+
+    // Delete video file
+    fs.unlinkSync(videoPath);
+    console.log(`Deleted video file: ${videoPath}`);
+
+    // Delete thumbnail if it exists
+    if (fs.existsSync(thumbnailPath)) {
+      fs.unlinkSync(thumbnailPath);
+      console.log(`Deleted thumbnail: ${thumbnailPath}`);
+    }
+
+    console.log(`Movie deleted successfully: ${movieName}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting movie:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Get available folders
+app.get("/api/folders", requireAuth, (_req, res) => {
+  try {
+    const videoDir = config.videoDirectory;
+    const items = fs
+      .readdirSync(videoDir)
+      .filter((f) => !f.startsWith("."))
+      .filter((f) => {
+        const itemPath = path.join(videoDir, f);
+        return fs.statSync(itemPath).isDirectory();
+      })
+      .sort();
+
+    res.json(items);
+  } catch (error) {
+    console.error("Error getting folders:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Rename folder
+app.post("/api/rename-folder", requireAuth, express.json(), async (req, res) => {
+  const { oldName, newName } = req.body;
+
+  if (!oldName || !newName) {
+    return res.status(400).json({ error: "Old name and new name are required" });
+  }
+
+  try {
+    const videoDir = config.videoDirectory;
+    const imgsDir = path.join(mainfolder, "site", "imgs");
+
+    const oldFolderPath = path.join(videoDir, oldName);
+    const newFolderPath = path.join(videoDir, newName);
+    const oldThumbnailPath = path.join(imgsDir, oldName + ".png");
+    const newThumbnailPath = path.join(imgsDir, newName + ".png");
+
+    // Check if old folder exists
+    if (!fs.existsSync(oldFolderPath)) {
+      return res.status(404).json({ error: "Folder not found" });
+    }
+
+    // Check if it's actually a directory
+    if (!fs.statSync(oldFolderPath).isDirectory()) {
+      return res.status(400).json({ error: "Path is not a folder" });
+    }
+
+    // Check if new name already exists
+    if (fs.existsSync(newFolderPath)) {
+      return res.status(400).json({ error: "A folder with this name already exists" });
+    }
+
+    // Rename folder
+    fs.renameSync(oldFolderPath, newFolderPath);
+
+    // Rename thumbnail if it exists
+    if (fs.existsSync(oldThumbnailPath)) {
+      fs.renameSync(oldThumbnailPath, newThumbnailPath);
+    }
+
+    console.log(`Renamed folder: ${oldName} -> ${newName}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error renaming folder:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Delete folder
+app.post("/api/delete-folder", requireAuth, express.json(), async (req, res) => {
+  const { folderName } = req.body;
+
+  if (!folderName) {
+    return res.status(400).json({ error: "Folder name is required" });
+  }
+
+  try {
+    const videoDir = config.videoDirectory;
+    const imgsDir = path.join(mainfolder, "site", "imgs");
+
+    const folderPath = path.join(videoDir, folderName);
+    const thumbnailPath = path.join(imgsDir, folderName + ".png");
+
+    // Check if folder exists
+    if (!fs.existsSync(folderPath)) {
+      return res.status(404).json({ error: "Folder not found" });
+    }
+
+    // Check if it's actually a directory
+    if (!fs.statSync(folderPath).isDirectory()) {
+      return res.status(400).json({ error: "Path is not a folder" });
+    }
+
+    // Delete folder and all contents recursively
+    fs.rmSync(folderPath, { recursive: true, force: true });
+    console.log(`Deleted folder: ${folderPath}`);
+
+    // Delete thumbnail if it exists
+    if (fs.existsSync(thumbnailPath)) {
+      fs.unlinkSync(thumbnailPath);
+      console.log(`Deleted folder thumbnail: ${thumbnailPath}`);
+    }
+
+    console.log(`Folder deleted successfully: ${folderName}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting folder:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Move movie from folder to root
+app.post("/api/move-from-folder", requireAuth, express.json(), async (req, res) => {
+  const { folderName, movieName } = req.body;
+
+  if (!folderName || !movieName) {
+    return res.status(400).json({ error: "Folder name and movie name are required" });
+  }
+
+  try {
+    const videoDir = config.videoDirectory;
+
+    const sourcePath = path.join(videoDir, folderName, movieName + ".mp4");
+    const targetPath = path.join(videoDir, movieName + ".mp4");
+
+    // Check if source exists
+    if (!fs.existsSync(sourcePath)) {
+      return res.status(404).json({ error: "Movie not found in folder" });
+    }
+
+    // Check if target already exists
+    if (fs.existsSync(targetPath)) {
+      return res.status(400).json({ error: "A movie with this name already exists in the root directory" });
+    }
+
+    // Move file
+    fs.renameSync(sourcePath, targetPath);
+    console.log(`Moved movie from folder: ${sourcePath} -> ${targetPath}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error moving movie from folder:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Get folder contents
+app.get("/api/folder-contents/:folderName", requireAuth, (req, res) => {
+  try {
+    const folderName = decodeURIComponent(req.params.folderName);
+    const videoDir = config.videoDirectory;
+    const folderPath = path.join(videoDir, folderName);
+
+    // Check if folder exists
+    if (!fs.existsSync(folderPath)) {
+      return res.status(404).json({ error: "Folder not found" });
+    }
+
+    // Check if it's actually a directory
+    if (!fs.statSync(folderPath).isDirectory()) {
+      return res.status(400).json({ error: "Path is not a folder" });
+    }
+
+    // Get all movies in the folder
+    const movies = fs
+      .readdirSync(folderPath)
+      .filter((f) => f.endsWith(".mp4"))
+      .sort()
+      .map((f) => {
+        const name = f.replace(/\.mp4$/i, "");
+        return {
+          title: name,
+          filename: f,
+        };
+      });
+
+    res.json(movies);
+  } catch (error) {
+    console.error("Error getting folder contents:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Move movie to folder
+app.post("/api/move-to-folder", requireAuth, express.json(), async (req, res) => {
+  const { movieName, folderName } = req.body;
+
+  if (!movieName || !folderName) {
+    return res.status(400).json({ error: "Movie name and folder name are required" });
+  }
+
+  try {
+    const videoDir = config.videoDirectory;
+    const imgsDir = path.join(mainfolder, "site", "imgs");
+
+    const sourceVideoPath = path.join(videoDir, movieName + ".mp4");
+    const sourceThumbnailPath = path.join(imgsDir, movieName + ".png");
+
+    // Check if source video exists
+    if (!fs.existsSync(sourceVideoPath)) {
+      return res.status(404).json({ error: "Movie not found" });
+    }
+
+    // Create folder if it doesn't exist
+    const targetFolderPath = path.join(videoDir, folderName);
+    if (!fs.existsSync(targetFolderPath)) {
+      fs.mkdirSync(targetFolderPath, { recursive: true });
+      console.log(`Created new folder: ${targetFolderPath}`);
+    }
+
+    // Check if target folder is actually a directory
+    if (!fs.statSync(targetFolderPath).isDirectory()) {
+      return res.status(400).json({ error: "Target path is not a directory" });
+    }
+
+    const targetVideoPath = path.join(targetFolderPath, movieName + ".mp4");
+
+    // Check if file already exists in target
+    if (fs.existsSync(targetVideoPath)) {
+      return res.status(400).json({ error: "A file with this name already exists in the target folder" });
+    }
+
+    // Move video file
+    fs.renameSync(sourceVideoPath, targetVideoPath);
+    console.log(`Moved video: ${sourceVideoPath} -> ${targetVideoPath}`);
+
+    // Move thumbnail if it exists
+    if (fs.existsSync(sourceThumbnailPath)) {
+      const targetThumbnailPath = path.join(imgsDir, folderName + ".png");
+      // Only move if folder doesn't already have a thumbnail
+      if (!fs.existsSync(targetThumbnailPath)) {
+        fs.renameSync(sourceThumbnailPath, targetThumbnailPath);
+        console.log(`Moved thumbnail: ${sourceThumbnailPath} -> ${targetThumbnailPath}`);
+      } else {
+        // Delete the old movie thumbnail since folder already has one
+        fs.unlinkSync(sourceThumbnailPath);
+        console.log(`Deleted movie thumbnail: ${sourceThumbnailPath}`);
+      }
+    }
+
+    console.log(`Movie moved to folder successfully: ${movieName} -> ${folderName}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error moving movie to folder:", error);
     res.status(500).json({ error: error.message });
   }
 });

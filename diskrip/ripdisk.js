@@ -1113,6 +1113,59 @@ async function checkForDisc() {
 }
 
 /**
+ * Delete 0-byte MP4 files from the video directory
+ * This handles cases where MP4 creation failed but left an empty file
+ */
+async function deleteZeroByteMP4Files() {
+  try {
+    log("Checking for 0-byte MP4 files in video directory...");
+
+    // Determine the final output folder
+    let finalOutputFolder = outputFolder;
+    if (config.outputSubfolder && config.outputSubfolder.trim()) {
+      finalOutputFolder = path.join(
+        outputFolder,
+        config.outputSubfolder.trim()
+      );
+    }
+
+    if (!fs.existsSync(finalOutputFolder)) {
+      log("Output folder doesn't exist yet, skipping 0-byte MP4 check");
+      return;
+    }
+
+    // Find all MP4 files in the output folder
+    const files = fs.readdirSync(finalOutputFolder);
+    const mp4Files = files.filter((f) => f.endsWith(".mp4"));
+
+    let deletedCount = 0;
+
+    for (const file of mp4Files) {
+      const filePath = path.join(finalOutputFolder, file);
+      try {
+        const stats = fs.statSync(filePath);
+        if (stats.size === 0) {
+          log(`Found 0-byte MP4 file: ${file}`);
+          fs.unlinkSync(filePath);
+          log(`✓ Deleted 0-byte MP4 file: ${file}`);
+          deletedCount++;
+        }
+      } catch (err) {
+        log(`Warning: Failed to check/delete ${file}: ${err.message}`);
+      }
+    }
+
+    if (deletedCount === 0) {
+      log("No 0-byte MP4 files found");
+    } else {
+      log(`✓ Deleted ${deletedCount} 0-byte MP4 file(s)`);
+    }
+  } catch (error) {
+    log(`Error checking for 0-byte MP4 files: ${error.message}`);
+  }
+}
+
+/**
  * Scan temp folder for orphaned MKV files and convert them to MP4
  * This handles cases where conversion may have failed or was interrupted
  */
@@ -1190,7 +1243,7 @@ async function processOrphanedMkvFiles() {
         );
         sendNotification(
           "info",
-          "Recovering Orphaned File",
+          "Recovering Unprocessed Video File",
           `Converting "${displayName}" to MP4`
         );
         await convertToMP4(
@@ -1210,7 +1263,7 @@ async function processOrphanedMkvFiles() {
         sendNotification(
           "error",
           "Recovery Failed",
-          `Failed to convert orphaned MKV "${displayName}"`
+          `Failed to unprocessed video file: "${displayName}"`
         );
       }
     }
@@ -1296,6 +1349,9 @@ async function main() {
 
   log("✓ Temp folder is writable");
   log("✓ Output folder is writable");
+
+  // Check for and delete any 0-byte MP4 files on startup
+  await deleteZeroByteMP4Files();
 
   // Check for and process any orphaned MKV files on startup
   await processOrphanedMkvFiles();

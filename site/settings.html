@@ -142,10 +142,15 @@
         margin-bottom: 10px;
         border-radius: 8px;
         display: grid;
-        grid-template-columns: 60px 1fr auto auto;
+        grid-template-columns: 60px 1fr auto;
         align-items: center;
         gap: 15px;
         width: 100%;
+      }
+
+      .movie-item .movie-actions {
+        display: flex;
+        gap: 10px;
       }
 
       .movie-item img {
@@ -212,6 +217,122 @@
 
       .upload-label:hover {
         background: rgba(102, 126, 234, 0.4);
+      }
+
+      /* Edit Menu Popup */
+      .edit-menu-popup {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(30, 30, 50, 0.98);
+        border: 2px solid rgba(102, 126, 234, 0.6);
+        border-radius: 12px;
+        padding: 30px;
+        z-index: 1000;
+        min-width: 400px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      }
+
+      .edit-menu-popup.active {
+        display: block;
+      }
+
+      .popup-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 999;
+      }
+
+      .popup-overlay.active {
+        display: block;
+      }
+
+      .popup-header {
+        font-size: 1.5em;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: #667eea;
+      }
+
+      .popup-option {
+        background: rgba(255, 255, 255, 0.05);
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        border: 2px solid rgba(255, 255, 255, 0.1);
+        transition: all 0.3s ease;
+      }
+
+      .popup-option:hover {
+        background: rgba(102, 126, 234, 0.2);
+        border-color: rgba(102, 126, 234, 0.4);
+      }
+
+      .popup-option-title {
+        font-weight: 600;
+        margin-bottom: 5px;
+      }
+
+      .popup-option-desc {
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 0.9em;
+      }
+
+      .popup-close {
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        width: 100%;
+        margin-top: 15px;
+        font-size: 1em;
+      }
+
+      .popup-close:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .btn-delete {
+        background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+      }
+
+      .btn-delete:hover {
+        opacity: 0.9;
+      }
+
+      .folder-select-container {
+        margin-top: 15px;
+      }
+
+      .folder-select-container select {
+        width: 100%;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        color: white;
+        font-size: 1em;
+        margin-bottom: 10px;
+      }
+
+      .folder-select-container input {
+        width: 100%;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        color: white;
+        font-size: 1em;
       }
 
       /* Tab Styles */
@@ -681,8 +802,18 @@
       </div>
     </div>
 
+    <!-- Edit Menu Popup -->
+    <div class="popup-overlay" id="popupOverlay" onclick="closeEditMenu()"></div>
+    <div class="edit-menu-popup" id="editMenuPopup">
+      <div class="popup-header">Edit Movie</div>
+      <div id="editMenuContent"></div>
+      <button class="popup-close" onclick="closeEditMenu()">Close</button>
+    </div>
+
     <script>
       let movies = [];
+      let currentEditingMovie = null;
+      let availableFolders = [];
 
       // Tab switching
       function switchTab(tabName) {
@@ -909,46 +1040,428 @@
 
         movieList.innerHTML = movies
           .map(
-            (movie, index) => `
-                <div class="movie-item">
-                    <img src="${movie.thumbnail}" alt="${escapeHtml(
-              movie.title
-            )}" onerror="this.src='/clapboard.jpg'">
-                    <div class="movie-info">
-                        <div class="movie-name">${escapeHtml(movie.title)}</div>
-                    </div>
-                    <div class="movie-actions">
-                        <button class="btn small-btn" data-movie-index="${index}">Rename</button>
-                        <label class="upload-label">
-                            Upload Thumbnail
-                            <input type="file" class="file-upload" accept="image/*" data-movie-index="${index}">
-                        </label>
-                    </div>
-                </div>
-            `
+            (item, index) => {
+              const isFolder = item.type === 'folder';
+              const title = escapeHtml(item.title);
+              const escapedTitle = title.replace(/'/g, "\\'");
+
+              if (isFolder) {
+                return `
+                  <div class="movie-item" style="border-left: 4px solid #667eea;">
+                      <img src="${item.thumbnail}" alt="${title}" onerror="this.src='/clapboard.jpg'">
+                      <div class="movie-info">
+                          <div class="movie-name">📁 ${title}</div>
+                          <div style="color: rgba(255, 255, 255, 0.6); font-size: 0.85em; margin-top: 3px;">
+                            ${item.itemCount} ${item.itemCount === 1 ? 'item' : 'items'}
+                          </div>
+                      </div>
+                      <div class="movie-actions">
+                          <button class="btn small-btn" onclick="openFolderMenu('${escapedTitle}', ${item.itemCount})">Manage</button>
+                          <button class="btn small-btn btn-delete" onclick="deleteFolder('${escapedTitle}')">Delete</button>
+                      </div>
+                  </div>
+                `;
+              } else {
+                return `
+                  <div class="movie-item">
+                      <img src="${item.thumbnail}" alt="${title}" onerror="this.src='/clapboard.jpg'">
+                      <div class="movie-info">
+                          <div class="movie-name">${title}</div>
+                      </div>
+                      <div class="movie-actions">
+                          <button class="btn small-btn" onclick="openEditMenu('${escapedTitle}')">Edit</button>
+                          <button class="btn small-btn" onclick="manageFolders('${escapedTitle}')">Folder</button>
+                          <button class="btn small-btn btn-delete" onclick="deleteMovie('${escapedTitle}')">Delete</button>
+                      </div>
+                  </div>
+                `;
+              }
+            }
           )
           .join("");
+      }
 
-        // Attach event listeners after rendering
-        document
-          .querySelectorAll(".movie-item button[data-movie-index]")
-          .forEach((button) => {
-            button.addEventListener("click", function () {
-              const index = parseInt(this.getAttribute("data-movie-index"));
-              renameMovie(movies[index].title);
-            });
+      function openEditMenu(movieTitle) {
+        currentEditingMovie = movieTitle;
+        const popup = document.getElementById("editMenuPopup");
+        const overlay = document.getElementById("popupOverlay");
+        const content = document.getElementById("editMenuContent");
+
+        content.innerHTML = `
+          <div class="popup-option" onclick="renameMovie('${movieTitle.replace(
+            /'/g,
+            "\\'"
+          )}')">
+            <div class="popup-option-title">✏️ Rename Movie</div>
+            <div class="popup-option-desc">Change the name of this movie</div>
+          </div>
+          <div class="popup-option" onclick="document.getElementById('thumbnailUpload').click()">
+            <div class="popup-option-title">🖼️ Upload Thumbnail</div>
+            <div class="popup-option-desc">Upload a custom poster image</div>
+          </div>
+          <input type="file" id="thumbnailUpload" style="display: none;" accept="image/*" onchange="handleThumbnailUpload(this.files[0])">
+        `;
+
+        popup.classList.add("active");
+        overlay.classList.add("active");
+      }
+
+      function closeEditMenu() {
+        const popup = document.getElementById("editMenuPopup");
+        const overlay = document.getElementById("popupOverlay");
+        popup.classList.remove("active");
+        overlay.classList.remove("active");
+        currentEditingMovie = null;
+      }
+
+      function handleThumbnailUpload(file) {
+        if (file && currentEditingMovie) {
+          uploadThumbnail(currentEditingMovie, file);
+          closeEditMenu();
+        }
+      }
+
+      async function manageFolders(movieTitle) {
+        currentEditingMovie = movieTitle;
+
+        // Load available folders
+        await loadFolders();
+
+        const popup = document.getElementById("editMenuPopup");
+        const overlay = document.getElementById("popupOverlay");
+        const content = document.getElementById("editMenuContent");
+
+        let folderOptions = availableFolders.map(folder =>
+          `<option value="${escapeHtml(folder)}">${escapeHtml(folder)}</option>`
+        ).join('');
+
+        content.innerHTML = `
+          <div style="margin-bottom: 20px;">
+            <div style="font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">
+              Move "${escapeHtml(movieTitle)}" to a folder
+            </div>
+            <div class="folder-select-container">
+              <select id="folderSelect">
+                <option value="">-- Select a folder --</option>
+                ${folderOptions}
+                <option value="__new__">+ Create New Folder</option>
+              </select>
+              <div id="newFolderInput" style="display: none;">
+                <input type="text" id="newFolderName" placeholder="Enter new folder name" />
+              </div>
+              <button class="btn" style="width: 100%; margin-top: 10px;" onclick="moveToFolder()">Move to Folder</button>
+            </div>
+          </div>
+        `;
+
+        popup.classList.add("active");
+        overlay.classList.add("active");
+
+        // Add event listener for folder select
+        document.getElementById('folderSelect').addEventListener('change', function() {
+          const newFolderInput = document.getElementById('newFolderInput');
+          if (this.value === '__new__') {
+            newFolderInput.style.display = 'block';
+          } else {
+            newFolderInput.style.display = 'none';
+          }
+        });
+      }
+
+      async function loadFolders() {
+        try {
+          const response = await fetch("/api/folders", {
+            credentials: "include",
           });
 
-        document
-          .querySelectorAll(".movie-item .file-upload[data-movie-index]")
-          .forEach((input) => {
-            input.addEventListener("change", function () {
-              const index = parseInt(this.getAttribute("data-movie-index"));
-              if (this.files[0]) {
-                uploadThumbnail(movies[index].title, this.files[0]);
-              }
-            });
+          if (response.status === 401) {
+            return;
+          }
+
+          availableFolders = await response.json();
+        } catch (error) {
+          console.error("Error loading folders:", error);
+          availableFolders = [];
+        }
+      }
+
+      async function moveToFolder() {
+        const folderSelect = document.getElementById('folderSelect');
+        const newFolderName = document.getElementById('newFolderName');
+
+        let targetFolder = folderSelect.value;
+
+        if (targetFolder === '__new__') {
+          targetFolder = newFolderName.value.trim();
+          if (!targetFolder) {
+            alert('Please enter a folder name');
+            return;
+          }
+        }
+
+        if (!targetFolder) {
+          alert('Please select a folder');
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/move-to-folder", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              movieName: currentEditingMovie,
+              folderName: targetFolder
+            }),
           });
+
+          if (response.status === 401) {
+            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            return;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            showMessage(
+              "generalMessage",
+              "Movie moved to folder successfully!",
+              "success"
+            );
+            closeEditMenu();
+            loadMovies(); // Reload the list
+          } else {
+            showMessage("generalMessage", "Error: " + result.error, "error");
+          }
+        } catch (error) {
+          showMessage(
+            "generalMessage",
+            "Error moving movie: " + error.message,
+            "error"
+          );
+        }
+      }
+
+      async function deleteMovie(movieTitle) {
+        if (!confirm(`Are you sure you want to delete "${movieTitle}"?\n\nThis will permanently delete the video file. This action cannot be undone.`)) {
+          return;
+        }
+
+        // Double confirmation for safety
+        if (!confirm(`FINAL CONFIRMATION:\n\nDelete "${movieTitle}" permanently?`)) {
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/delete-movie", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ movieName: movieTitle }),
+          });
+
+          if (response.status === 401) {
+            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            return;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            showMessage(
+              "generalMessage",
+              "Movie deleted successfully!",
+              "success"
+            );
+            loadMovies(); // Reload the list
+          } else {
+            showMessage("generalMessage", "Error: " + result.error, "error");
+          }
+        } catch (error) {
+          showMessage(
+            "generalMessage",
+            "Error deleting movie: " + error.message,
+            "error"
+          );
+        }
+      }
+
+      async function openFolderMenu(folderTitle, itemCount) {
+        currentEditingMovie = folderTitle; // Reuse for folder name
+        const popup = document.getElementById("editMenuPopup");
+        const overlay = document.getElementById("popupOverlay");
+        const content = document.getElementById("editMenuContent");
+
+        // Load folder contents
+        let folderContents = [];
+        try {
+          const response = await fetch(`/api/folder-contents/${encodeURIComponent(folderTitle)}`, {
+            credentials: "include",
+          });
+          if (response.ok) {
+            folderContents = await response.json();
+          }
+        } catch (error) {
+          console.error("Error loading folder contents:", error);
+        }
+
+        let contentsHTML = '';
+        if (folderContents.length > 0) {
+          contentsHTML = `
+            <div style="margin-bottom: 20px; max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
+              <div style="font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.7);">
+                Contents (${folderContents.length} ${folderContents.length === 1 ? 'item' : 'items'}):
+              </div>
+              ${folderContents.map(movie => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); margin-bottom: 5px; border-radius: 5px;">
+                  <span style="font-size: 0.9em;">${escapeHtml(movie.title)}</span>
+                  <button class="btn small-btn" style="padding: 5px 10px; font-size: 0.8em;" onclick="moveFromFolder('${folderTitle.replace(/'/g, "\\'")}', '${escapeHtml(movie.title).replace(/'/g, "\\'")}')">Move Out</button>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+
+        content.innerHTML = `
+          <div class="popup-option" onclick="renameFolder('${folderTitle.replace(/'/g, "\\'")}')">
+            <div class="popup-option-title">✏️ Rename Folder</div>
+            <div class="popup-option-desc">Change the name of this folder</div>
+          </div>
+          <div class="popup-option" onclick="document.getElementById('folderThumbnailUpload').click()">
+            <div class="popup-option-title">🖼️ Upload Folder Thumbnail</div>
+            <div class="popup-option-desc">Upload a custom poster image for this folder</div>
+          </div>
+          ${contentsHTML}
+          <input type="file" id="folderThumbnailUpload" style="display: none;" accept="image/*" onchange="handleFolderThumbnailUpload(this.files[0])">
+        `;
+
+        popup.classList.add("active");
+        overlay.classList.add("active");
+      }
+
+      function handleFolderThumbnailUpload(file) {
+        if (file && currentEditingMovie) {
+          uploadThumbnail(currentEditingMovie, file);
+          closeEditMenu();
+        }
+      }
+
+      async function renameFolder(oldName) {
+        const newName = prompt("Enter new name for the folder:", oldName);
+        if (!newName || newName === oldName) return;
+
+        try {
+          const response = await fetch("/api/rename-folder", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ oldName, newName }),
+          });
+
+          if (response.status === 401) {
+            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            return;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            showMessage(
+              "generalMessage",
+              "Folder renamed successfully!",
+              "success"
+            );
+            closeEditMenu();
+            loadMovies(); // Reload the list
+          } else {
+            showMessage("generalMessage", "Error: " + result.error, "error");
+          }
+        } catch (error) {
+          showMessage(
+            "generalMessage",
+            "Error renaming folder: " + error.message,
+            "error"
+          );
+        }
+      }
+
+      async function deleteFolder(folderTitle) {
+        if (!confirm(`Are you sure you want to delete the folder "${folderTitle}"?\n\nThis will permanently delete the folder and ALL videos inside it. This action cannot be undone.`)) {
+          return;
+        }
+
+        // Double confirmation for safety
+        if (!confirm(`FINAL CONFIRMATION:\n\nDelete "${folderTitle}" and ALL its contents permanently?`)) {
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/delete-folder", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folderName: folderTitle }),
+          });
+
+          if (response.status === 401) {
+            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            return;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            showMessage(
+              "generalMessage",
+              "Folder deleted successfully!",
+              "success"
+            );
+            loadMovies(); // Reload the list
+          } else {
+            showMessage("generalMessage", "Error: " + result.error, "error");
+          }
+        } catch (error) {
+          showMessage(
+            "generalMessage",
+            "Error deleting folder: " + error.message,
+            "error"
+          );
+        }
+      }
+
+      async function moveFromFolder(folderName, movieName) {
+        if (!confirm(`Move "${movieName}" out of "${folderName}" to the main library?`)) {
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/move-from-folder", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folderName, movieName }),
+          });
+
+          if (response.status === 401) {
+            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            return;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            showMessage(
+              "generalMessage",
+              "Movie moved out of folder successfully!",
+              "success"
+            );
+            closeEditMenu();
+            loadMovies(); // Reload the list
+          } else {
+            showMessage("generalMessage", "Error: " + result.error, "error");
+          }
+        } catch (error) {
+          showMessage(
+            "generalMessage",
+            "Error moving movie: " + error.message,
+            "error"
+          );
+        }
       }
 
       async function renameMovie(oldName) {
