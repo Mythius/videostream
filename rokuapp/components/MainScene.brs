@@ -70,12 +70,12 @@ sub onContentLoaded()
                     folderTitle = folderTitle + " (" + StrI(item.itemCount).Trim() + ")"
                 end if
                 node.ShortDescriptionLine1 = folderTitle
-                node.contentType = "folder"
+                node.addFields({itemType: "folder"})
                 node.url = item.url  ' Store folder URL for navigation
             else
                 ' It's a movie or folder content
                 node.ShortDescriptionLine1 = item.title
-                node.contentType = "movie"
+                node.addFields({itemType: "movie"})
                 node.StreamFormat = "mp4"
                 node.url = item.url
             end if
@@ -86,7 +86,7 @@ sub onContentLoaded()
             node.FHDPosterUrl = item.thumbnail
 
             contentNode.appendChild(node)
-            print "==> Added node: "; item.title; " (type: "; node.contentType; ")"
+            print "==> Added node: "; item.title; " (type: "; node.itemType; ")"
         end if
     end for
 
@@ -118,11 +118,11 @@ sub onSelect()
     end if
 
     print "==> onSelect: item.Title: "; item.Title
-    print "==> onSelect: item.contentType: "; item.contentType
+    print "==> onSelect: item.itemType: "; item.itemType
     print "==> onSelect: item.url: "; item.url
 
     ' Check if this is a folder
-    if item.contentType = "folder"
+    if item.itemType <> invalid and item.itemType = "folder"
         ' Navigate into folder
         print "==> Navigating into folder: "; item.Title
         m.currentFolder = item.Title
