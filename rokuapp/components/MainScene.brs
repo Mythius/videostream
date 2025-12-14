@@ -17,7 +17,9 @@ sub init()
         return
     end if
 
+    print "==> MainScene: Setting up itemSelected observer"
     m.grid.observeField("itemSelected", "onSelect")
+    print "==> MainScene: itemSelected observer set"
 
     m.loader = m.top.findNode("loader")
     m.loader.observeField("content", "onContentLoaded")
@@ -94,10 +96,30 @@ sub onContentLoaded()
 end sub
 
 sub onSelect()
-    index = m.grid.itemSelected
-    item = m.grid.content.getChild(index)
+    print "==> onSelect: START"
+    print "==> onSelect: m.grid type: "; type(m.grid)
+    print "==> onSelect: m.grid.itemSelected: "; m.grid.itemSelected
 
-    print "==> onSelect: "; item.Title; " (type: "; item.contentType; ")"
+    index = m.grid.itemSelected
+    print "==> onSelect: Selected index: "; index
+    print "==> onSelect: index type: "; type(index)
+
+    if m.grid.content = invalid then
+        print "==> ERROR: grid content is invalid"
+        return
+    end if
+
+    print "==> onSelect: About to call getChild("; index; ")"
+    item = m.grid.content.getChild(index)
+    print "==> onSelect: getChild returned, item type: "; type(item)
+    if item = invalid then
+        print "==> ERROR: selected item is invalid"
+        return
+    end if
+
+    print "==> onSelect: item.Title: "; item.Title
+    print "==> onSelect: item.contentType: "; item.contentType
+    print "==> onSelect: item.url: "; item.url
 
     ' Check if this is a folder
     if item.contentType = "folder"
@@ -105,16 +127,20 @@ sub onSelect()
         print "==> Navigating into folder: "; item.Title
         m.currentFolder = item.Title
         m.navigationStack.Push(item.Title)
+        print "==> About to call loadFolderContents with url: "; item.url
         loadFolderContents(item.url)
+        print "==> Returned from loadFolderContents"
         return
     end if
 
     ' It's a movie - play it
     print "==> Playing movie: "; item.Title
+    print "==> Movie URL: "; item.url
 
     ' Hide grid
     m.grid.visible = false
     m.video.setFocus(true)
+    print "==> Grid hidden, video focused"
 
     ' Setup video
     videoNode = m.top.findNode("videoPlayer")
@@ -122,31 +148,42 @@ sub onSelect()
         print "==> ERROR: videoPlayer node not found"
         return
     end if
+    print "==> videoPlayer node found"
 
     ' Position video in top-right (adjust as needed for your resolution)
     videoNode.visible = true
     screenSize = CreateObject("roDeviceInfo").GetDisplaySize()
+    print "==> Screen size: w="; screenSize.w; " h="; screenSize.h
     videoNode.translation = [0, 0]
     videoNode.width = screenSize.w
     videoNode.height = screenSize.h
 
+    print "==> Creating content node for video"
     contentNode = createObject("roSGNode", "ContentNode")
     contentNode.Title = item.Title
     contentNode.StreamFormat = "mp4"
     contentNode.url = item.url
+    print "==> Content node created with URL: "; item.url
 
+    print "==> Setting video content and starting playback"
     videoNode.content = contentNode
     videoNode.control = "play"
+    print "==> Video playback started"
 end sub
 
 sub loadFolderContents(folderUrl)
-    print "==> Loading folder contents from: "; folderUrl
+    print "==> loadFolderContents: START"
+    print "==> loadFolderContents: URL = "; folderUrl
 
     ' Use the task node to load folder contents asynchronously
     m.loadingFolder = true
+    print "==> loadFolderContents: Set loadingFolder = true"
 
     ' Just update URL - the task will auto-run when URL changes
+    print "==> loadFolderContents: About to set loader.url"
     m.loader.url = folderUrl
+    print "==> loadFolderContents: Set loader.url to: "; folderUrl
+    print "==> loadFolderContents: END"
 end sub
 
 sub navigateBack()
@@ -182,7 +219,11 @@ sub onVideoStateChange()
 end sub
 
 function onKeyEvent(key, press) as Boolean
-    if press = false then return false
+    print "==> onKeyEvent called: key="; key; " press="; press
+    if press = false then
+        print "==> onKeyEvent: Ignoring key release"
+        return false
+    end if
 
     print "==> Key pressed: "; key
 
