@@ -558,6 +558,22 @@ app.get("/", (req, res) => {
   }
 });
 
+// API: Get version information
+app.get("/version", (req, res) => {
+  try {
+    const versionPath = path.join(__dirname, "version.json");
+    if (fs.existsSync(versionPath)) {
+      const versionData = JSON.parse(fs.readFileSync(versionPath, "utf8"));
+      res.json(versionData);
+    } else {
+      res.json({ version: "Unknown", lastUpdated: null });
+    }
+  } catch (error) {
+    console.error("Error reading version:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get("/json", (req, res) => {
   try {
     const items = getMoviesAndFolders();
@@ -566,7 +582,7 @@ app.get("/json", (req, res) => {
     const links = items.map((item) => ({
       url:
         item.type === "folder"
-          ? `${config.url}/series/${encodeURIComponent(item.name)}`
+          ? `${config.url}/json/series/${encodeURIComponent(item.name)}`
           : `${config.url}/movies/${encodeURIComponent(item.name)}`,
       thumbnail: item.thumbnail.startsWith("http")
         ? item.thumbnail
@@ -574,12 +590,45 @@ app.get("/json", (req, res) => {
       title: item.title,
       type: item.type,
       episodeCount: item.episodeCount,
+      itemCount: item.episodeCount,
     }));
 
     res.send(links);
   } catch (err) {
     console.log(err);
     res.status(500).send("Error reading video directory");
+  }
+});
+
+// JSON endpoint for folder/series episodes (for Roku app)
+app.get("/json/series/:seriesName", (req, res) => {
+  try {
+    const seriesName = decodeURIComponent(req.params.seriesName);
+    const seriesPath = path.join(config.videoDirectory, seriesName);
+
+    if (!fs.existsSync(seriesPath) || !fs.statSync(seriesPath).isDirectory()) {
+      return res.status(404).json({ error: "Folder not found" });
+    }
+
+    // Get all episodes in the folder
+    const episodes = fs
+      .readdirSync(seriesPath)
+      .filter((f) => f.endsWith(".mp4"))
+      .sort()
+      .map((f) => {
+        const name = f.replace(/\.mp4$/i, "");
+        return {
+          type: "movie",
+          title: name,
+          url: `${config.url}/series/${encodeURIComponent(seriesName)}/${encodeURIComponent(name)}`,
+          thumbnail: `${config.url}/clapboard.jpg`, // Default thumbnail for episodes
+        };
+      });
+
+    res.json(episodes);
+  } catch (err) {
+    console.error("Error loading series:", err);
+    res.status(500).json({ error: "Error loading series" });
   }
 });
 
@@ -1168,6 +1217,44 @@ app.post("/api/settings", requireAuth, express.json(), (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Error updating settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Update software (git pull and restart service)
+app.post("/api/update-software", requireAuth, (req, res) => {
+  try {
+    console.log("Software update requested");
+
+    // Send success response immediately before restarting
+    res.json({ success: true, message: "Update initiated" });
+
+    // Execute git pull and restart service after a short delay
+    setTimeout(() => {
+      const { exec } = require("child_process");
+
+      // Run git pull first
+      exec("git pull", { cwd: __dirname }, (error, stdout, stderr) => {
+        if (error) {
+          console.error("Git pull error:", error);
+          console.error("stderr:", stderr);
+          return;
+        }
+        console.log("Git pull output:", stdout);
+
+        // After successful git pull, restart the service
+        exec("sudo systemctl restart stream.service", (restartError, restartStdout, restartStderr) => {
+          if (restartError) {
+            console.error("Service restart error:", restartError);
+            console.error("stderr:", restartStderr);
+          } else {
+            console.log("Service restart initiated:", restartStdout);
+          }
+        });
+      });
+    }, 500); // 500ms delay to ensure response is sent
+  } catch (error) {
+    console.error("Error initiating update:", error);
     res.status(500).json({ error: error.message });
   }
 });

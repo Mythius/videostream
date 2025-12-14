@@ -29,6 +29,16 @@
         align-items: center;
       }
 
+      @media (max-width: 768px) {
+        .header {
+          padding: 15px 20px;
+        }
+
+        .header h1 {
+          font-size: 1.5em;
+        }
+      }
+
       .header h1 {
         font-size: 2em;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -56,9 +66,16 @@
       }
 
       .container {
-        max-width: 1200px;
+        max-width: 1400px;
         margin: 0 auto;
         padding: 40px;
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          padding: 20px;
+          max-width: 100%;
+        }
       }
 
       .section {
@@ -151,6 +168,38 @@
       .movie-item .movie-actions {
         display: flex;
         gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 768px) {
+        .movie-item {
+          grid-template-columns: 50px 1fr;
+          gap: 10px;
+          padding: 12px;
+        }
+
+        .movie-item img {
+          width: 50px;
+          height: 75px;
+        }
+
+        .movie-item .movie-actions {
+          grid-column: 1 / -1;
+          justify-content: flex-start;
+          gap: 8px;
+          margin-top: 8px;
+        }
+
+        .movie-name {
+          font-size: 0.95em;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .movie-item .movie-actions .btn {
+          flex: 1;
+          min-width: 80px;
+        }
       }
 
       .movie-item img {
@@ -163,6 +212,7 @@
       .movie-info {
         flex: 1;
         min-width: 0;
+        margin-left: 20px;
       }
 
       .movie-name {
@@ -232,7 +282,22 @@
         padding: 30px;
         z-index: 1000;
         min-width: 400px;
+        max-width: 90vw;
+        max-height: 85vh;
+        overflow-y: auto;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      }
+
+      @media (max-width: 768px) {
+        .edit-menu-popup {
+          min-width: unset;
+          width: 90vw;
+          padding: 20px;
+        }
+
+        .popup-header {
+          font-size: 1.3em;
+        }
       }
 
       .edit-menu-popup.active {
@@ -597,7 +662,14 @@
           <button class="btn" onclick="saveGeneralSettings()">
             Save Settings
           </button>
+          <button class="btn btn-secondary" onclick="updateSoftware()" style="margin-left: 10px;">
+            Update Software
+          </button>
           <div class="message" id="generalMessage"></div>
+          <div class="message" id="updateMessage"></div>
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1); text-align: center; color: rgba(255, 255, 255, 0.5); font-size: 0.9em;">
+            <div id="versionInfo">Loading version...</div>
+          </div>
         </div>
       </div>
 
@@ -724,7 +796,7 @@
             <p style="color: rgba(255, 255, 255, 0.7)">
               Real-time notifications from the disc ripper service
             </p>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px">
               <button
                 class="btn btn-secondary small-btn"
                 onclick="loadNotifications()"
@@ -803,7 +875,11 @@
     </div>
 
     <!-- Edit Menu Popup -->
-    <div class="popup-overlay" id="popupOverlay" onclick="closeEditMenu()"></div>
+    <div
+      class="popup-overlay"
+      id="popupOverlay"
+      onclick="closeEditMenu()"
+    ></div>
     <div class="edit-menu-popup" id="editMenuPopup">
       <div class="popup-header">Edit Movie</div>
       <div id="editMenuContent"></div>
@@ -1039,30 +1115,35 @@
         }
 
         movieList.innerHTML = movies
-          .map(
-            (item, index) => {
-              const isFolder = item.type === 'folder';
-              const title = escapeHtml(item.title);
-              const escapedTitle = title.replace(/'/g, "\\'");
+          .map((item, index) => {
+            const isFolder = item.type === "folder";
+            const title = escapeHtml(item.title);
+            const escapedTitle = title.replace(/'/g, "\\'");
 
-              if (isFolder) {
-                return `
+            if (isFolder) {
+              return `
                   <div class="movie-item" style="border-left: 4px solid #667eea;">
-                      <img src="${item.thumbnail}" alt="${title}" onerror="this.src='/clapboard.jpg'">
+                      <img src="${
+                        item.thumbnail
+                      }" alt="${title}" onerror="this.src='/clapboard.jpg'">
                       <div class="movie-info">
                           <div class="movie-name">📁 ${title}</div>
                           <div style="color: rgba(255, 255, 255, 0.6); font-size: 0.85em; margin-top: 3px;">
-                            ${item.itemCount} ${item.itemCount === 1 ? 'item' : 'items'}
+                            ${item.itemCount} ${
+                item.itemCount === 1 ? "item" : "items"
+              }
                           </div>
                       </div>
                       <div class="movie-actions">
-                          <button class="btn small-btn" onclick="openFolderMenu('${escapedTitle}', ${item.itemCount})">Manage</button>
+                          <button class="btn small-btn" onclick="openFolderMenu('${escapedTitle}', ${
+                item.itemCount
+              })">Manage</button>
                           <button class="btn small-btn btn-delete" onclick="deleteFolder('${escapedTitle}')">Delete</button>
                       </div>
                   </div>
                 `;
-              } else {
-                return `
+            } else {
+              return `
                   <div class="movie-item">
                       <img src="${item.thumbnail}" alt="${title}" onerror="this.src='/clapboard.jpg'">
                       <div class="movie-info">
@@ -1075,9 +1156,8 @@
                       </div>
                   </div>
                 `;
-              }
             }
-          )
+          })
           .join("");
       }
 
@@ -1131,9 +1211,14 @@
         const overlay = document.getElementById("popupOverlay");
         const content = document.getElementById("editMenuContent");
 
-        let folderOptions = availableFolders.map(folder =>
-          `<option value="${escapeHtml(folder)}">${escapeHtml(folder)}</option>`
-        ).join('');
+        let folderOptions = availableFolders
+          .map(
+            (folder) =>
+              `<option value="${escapeHtml(folder)}">${escapeHtml(
+                folder
+              )}</option>`
+          )
+          .join("");
 
         content.innerHTML = `
           <div style="margin-bottom: 20px;">
@@ -1158,14 +1243,16 @@
         overlay.classList.add("active");
 
         // Add event listener for folder select
-        document.getElementById('folderSelect').addEventListener('change', function() {
-          const newFolderInput = document.getElementById('newFolderInput');
-          if (this.value === '__new__') {
-            newFolderInput.style.display = 'block';
-          } else {
-            newFolderInput.style.display = 'none';
-          }
-        });
+        document
+          .getElementById("folderSelect")
+          .addEventListener("change", function () {
+            const newFolderInput = document.getElementById("newFolderInput");
+            if (this.value === "__new__") {
+              newFolderInput.style.display = "block";
+            } else {
+              newFolderInput.style.display = "none";
+            }
+          });
       }
 
       async function loadFolders() {
@@ -1186,21 +1273,21 @@
       }
 
       async function moveToFolder() {
-        const folderSelect = document.getElementById('folderSelect');
-        const newFolderName = document.getElementById('newFolderName');
+        const folderSelect = document.getElementById("folderSelect");
+        const newFolderName = document.getElementById("newFolderName");
 
         let targetFolder = folderSelect.value;
 
-        if (targetFolder === '__new__') {
+        if (targetFolder === "__new__") {
           targetFolder = newFolderName.value.trim();
           if (!targetFolder) {
-            alert('Please enter a folder name');
+            alert("Please enter a folder name");
             return;
           }
         }
 
         if (!targetFolder) {
-          alert('Please select a folder');
+          alert("Please select a folder");
           return;
         }
 
@@ -1211,12 +1298,13 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               movieName: currentEditingMovie,
-              folderName: targetFolder
+              folderName: targetFolder,
             }),
           });
 
           if (response.status === 401) {
-            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            window.location.href =
+              "/login?next=" + encodeURIComponent("/settings.html");
             return;
           }
 
@@ -1242,12 +1330,18 @@
       }
 
       async function deleteMovie(movieTitle) {
-        if (!confirm(`Are you sure you want to delete "${movieTitle}"?\n\nThis will permanently delete the video file. This action cannot be undone.`)) {
+        if (
+          !confirm(
+            `Are you sure you want to delete "${movieTitle}"?\n\nThis will permanently delete the video file. This action cannot be undone.`
+          )
+        ) {
           return;
         }
 
         // Double confirmation for safety
-        if (!confirm(`FINAL CONFIRMATION:\n\nDelete "${movieTitle}" permanently?`)) {
+        if (
+          !confirm(`FINAL CONFIRMATION:\n\nDelete "${movieTitle}" permanently?`)
+        ) {
           return;
         }
 
@@ -1260,7 +1354,8 @@
           });
 
           if (response.status === 401) {
-            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            window.location.href =
+              "/login?next=" + encodeURIComponent("/settings.html");
             return;
           }
 
@@ -1293,9 +1388,12 @@
         // Load folder contents
         let folderContents = [];
         try {
-          const response = await fetch(`/api/folder-contents/${encodeURIComponent(folderTitle)}`, {
-            credentials: "include",
-          });
+          const response = await fetch(
+            `/api/folder-contents/${encodeURIComponent(folderTitle)}`,
+            {
+              credentials: "include",
+            }
+          );
           if (response.ok) {
             folderContents = await response.json();
           }
@@ -1303,25 +1401,42 @@
           console.error("Error loading folder contents:", error);
         }
 
-        let contentsHTML = '';
+        let contentsHTML = "";
         if (folderContents.length > 0) {
           contentsHTML = `
             <div style="margin-bottom: 20px; max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px;">
               <div style="font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.7);">
-                Contents (${folderContents.length} ${folderContents.length === 1 ? 'item' : 'items'}):
+                Contents (${folderContents.length} ${
+            folderContents.length === 1 ? "item" : "items"
+          }):
               </div>
-              ${folderContents.map(movie => `
+              ${folderContents
+                .map(
+                  (movie) => `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; background: rgba(255,255,255,0.05); margin-bottom: 5px; border-radius: 5px;">
-                  <span style="font-size: 0.9em;">${escapeHtml(movie.title)}</span>
-                  <button class="btn small-btn" style="padding: 5px 10px; font-size: 0.8em;" onclick="moveFromFolder('${folderTitle.replace(/'/g, "\\'")}', '${escapeHtml(movie.title).replace(/'/g, "\\'")}')">Move Out</button>
+                  <span style="font-size: 0.9em;">${escapeHtml(
+                    movie.title
+                  )}</span>
+                  <button class="btn small-btn" style="padding: 5px 10px; font-size: 0.8em;" onclick="moveFromFolder('${folderTitle.replace(
+                    /'/g,
+                    "\\'"
+                  )}', '${escapeHtml(movie.title).replace(
+                    /'/g,
+                    "\\'"
+                  )}')">Move Out</button>
                 </div>
-              `).join('')}
+              `
+                )
+                .join("")}
             </div>
           `;
         }
 
         content.innerHTML = `
-          <div class="popup-option" onclick="renameFolder('${folderTitle.replace(/'/g, "\\'")}')">
+          <div class="popup-option" onclick="renameFolder('${folderTitle.replace(
+            /'/g,
+            "\\'"
+          )}')">
             <div class="popup-option-title">✏️ Rename Folder</div>
             <div class="popup-option-desc">Change the name of this folder</div>
           </div>
@@ -1357,7 +1472,8 @@
           });
 
           if (response.status === 401) {
-            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            window.location.href =
+              "/login?next=" + encodeURIComponent("/settings.html");
             return;
           }
 
@@ -1383,12 +1499,20 @@
       }
 
       async function deleteFolder(folderTitle) {
-        if (!confirm(`Are you sure you want to delete the folder "${folderTitle}"?\n\nThis will permanently delete the folder and ALL videos inside it. This action cannot be undone.`)) {
+        if (
+          !confirm(
+            `Are you sure you want to delete the folder "${folderTitle}"?\n\nThis will permanently delete the folder and ALL videos inside it. This action cannot be undone.`
+          )
+        ) {
           return;
         }
 
         // Double confirmation for safety
-        if (!confirm(`FINAL CONFIRMATION:\n\nDelete "${folderTitle}" and ALL its contents permanently?`)) {
+        if (
+          !confirm(
+            `FINAL CONFIRMATION:\n\nDelete "${folderTitle}" and ALL its contents permanently?`
+          )
+        ) {
           return;
         }
 
@@ -1401,7 +1525,8 @@
           });
 
           if (response.status === 401) {
-            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            window.location.href =
+              "/login?next=" + encodeURIComponent("/settings.html");
             return;
           }
 
@@ -1426,7 +1551,11 @@
       }
 
       async function moveFromFolder(folderName, movieName) {
-        if (!confirm(`Move "${movieName}" out of "${folderName}" to the main library?`)) {
+        if (
+          !confirm(
+            `Move "${movieName}" out of "${folderName}" to the main library?`
+          )
+        ) {
           return;
         }
 
@@ -1439,7 +1568,8 @@
           });
 
           if (response.status === 401) {
-            window.location.href = "/login?next=" + encodeURIComponent("/settings.html");
+            window.location.href =
+              "/login?next=" + encodeURIComponent("/settings.html");
             return;
           }
 
@@ -1631,6 +1761,66 @@
         }
       }
 
+      async function updateSoftware() {
+        if (!confirm("This will update the software by running 'git pull' and restarting the service. The service will be unavailable for a few seconds. Continue?")) {
+          return;
+        }
+
+        showMessage("updateMessage", "Updating software... The service will restart shortly.", "success");
+
+        try {
+          const response = await fetch("/api/update-software", {
+            method: "POST",
+            credentials: "include",
+          });
+
+          if (response.status === 401) {
+            return;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            showMessage(
+              "updateMessage",
+              "Update initiated! The service is restarting. This page will reload in 5 seconds...",
+              "success"
+            );
+            // Reload the page after 5 seconds to reconnect after restart
+            setTimeout(() => {
+              window.location.reload();
+            }, 5000);
+          } else {
+            showMessage("updateMessage", "Error: " + result.error, "error");
+          }
+        } catch (error) {
+          showMessage(
+            "updateMessage",
+            "Update may have started (connection lost during restart). Reloading in 5 seconds...",
+            "success"
+          );
+          setTimeout(() => {
+            window.location.reload();
+          }, 5000);
+        }
+      }
+
+      async function loadVersion() {
+        try {
+          const response = await fetch("/version");
+          const versionData = await response.json();
+          const versionElement = document.getElementById("versionInfo");
+
+          if (versionData.version) {
+            versionElement.textContent = `Version: ${versionData.version}`;
+          } else {
+            versionElement.textContent = "Version: Unknown";
+          }
+        } catch (error) {
+          console.error("Error loading version:", error);
+          document.getElementById("versionInfo").textContent = "Version: Error loading";
+        }
+      }
+
       async function loadRipperSettings() {
         try {
           const response = await fetch("/api/ripper-settings", {
@@ -1817,6 +2007,7 @@
       loadMovies();
       loadGeneralSettings();
       loadRipperSettings();
+      loadVersion();
     </script>
   </body>
 </html>

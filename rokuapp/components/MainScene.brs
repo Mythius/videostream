@@ -5,6 +5,11 @@ sub init()
 
     print "==> MainScene: init()"
 
+    ' Store base URL and navigation state
+    m.baseUrl = URL
+    m.currentFolder = invalid
+    m.navigationStack = []
+
     m.grid = m.top.findNode("posterGrid")
     if m.grid = invalid then
         print "==> ERROR: posterGrid not found"
@@ -19,7 +24,7 @@ sub init()
 
     m.top.setFocus(true)
     m.grid.setFocus(true)
-    
+
     m.video = m.top.findNode("videoPlayer")
     m.video.observeField("state", "onVideoStateChange")
 
@@ -43,19 +48,38 @@ sub onContentLoaded()
 
     contentNode = createObject("roSGNode", "ContentNode")
 
-    for each movie in movieArray
-        if movie.title <> invalid and movie.url <> invalid and movie.thumbnail <> invalid
-            item = createObject("roSGNode", "ContentNode")
-            item.Title = movie.title
-            item.ShortDescriptionLine1 = movie.title  ' This displays as caption below poster
-            item.hdPosterUrl = movie.thumbnail
-            item.HDPosterUrl = movie.thumbnail
-            item.sdPosterUrl = movie.thumbnail
-            item.FHDPosterUrl = movie.thumbnail
-            item.StreamFormat = "mp4"
-            item.url = movie.url  ' This can be read later for playback
-            contentNode.appendChild(item)
-            print "==> Added node: "; movie.title; " with thumbnail: "; movie.thumbnail
+    for each item in movieArray
+        if item.title <> invalid and item.thumbnail <> invalid
+            node = createObject("roSGNode", "ContentNode")
+            node.Title = item.title
+
+            ' Check if this is a folder or a movie
+            if item.type = "folder"
+                ' It's a folder - add folder indicator to title
+                folderTitle = "📁 " + item.title
+                if item.episodeCount <> invalid
+                    folderTitle = folderTitle + " (" + StrI(item.episodeCount).Trim() + ")"
+                else if item.itemCount <> invalid
+                    folderTitle = folderTitle + " (" + StrI(item.itemCount).Trim() + ")"
+                end if
+                node.ShortDescriptionLine1 = folderTitle
+                node.contentType = "folder"
+                node.url = item.url  ' Store folder URL for navigation
+            else
+                ' It's a movie
+                node.ShortDescriptionLine1 = item.title
+                node.contentType = "movie"
+                node.StreamFormat = "mp4"
+                node.url = item.url
+            end if
+
+            node.hdPosterUrl = item.thumbnail
+            node.HDPosterUrl = item.thumbnail
+            node.sdPosterUrl = item.thumbnail
+            node.FHDPosterUrl = item.thumbnail
+
+            contentNode.appendChild(node)
+            print "==> Added node: "; item.title; " (type: "; node.contentType; ")"
         end if
     end for
 
@@ -67,12 +91,24 @@ sub onSelect()
     index = m.grid.itemSelected
     item = m.grid.content.getChild(index)
 
-    print "==> onSelect: "; item.Title
+    print "==> onSelect: "; item.Title; " (type: "; item.contentType; ")"
+
+    ' Check if this is a folder
+    if item.contentType = "folder"
+        ' Navigate into folder
+        print "==> Navigating into folder: "; item.Title
+        m.currentFolder = item.Title
+        m.navigationStack.Push(item.Title)
+        loadFolderContents(item.url)
+        return
+    end if
+
+    ' It's a movie - play it
+    print "==> Playing movie: "; item.Title
 
     ' Hide grid
     m.grid.visible = false
     m.video.setFocus(true)
-
 
     ' Setup video
     videoNode = m.top.findNode("videoPlayer")
@@ -88,7 +124,6 @@ sub onSelect()
     videoNode.width = screenSize.w
     videoNode.height = screenSize.h
 
-
     contentNode = createObject("roSGNode", "ContentNode")
     contentNode.Title = item.Title
     contentNode.StreamFormat = "mp4"
@@ -96,6 +131,70 @@ sub onSelect()
 
     videoNode.content = contentNode
     videoNode.control = "play"
+end sub
+
+sub loadFolderContents(folderUrl)
+    print "==> Loading folder contents from: "; folderUrl
+
+    ' Fetch folder contents via JSON endpoint
+    urlTransfer = CreateObject("roUrlTransfer")
+    urlTransfer.SetUrl(folderUrl)
+    response = urlTransfer.GetToString()
+
+    if response <> invalid and response <> ""
+        json = ParseJson(response)
+        if json <> invalid and json.Count() > 0
+            print "==> Folder content loaded: "; json.Count(); " items"
+
+            ' Create content node for folder items
+            contentNode = createObject("roSGNode", "ContentNode")
+
+            for each item in json
+                if item.title <> invalid and item.url <> invalid and item.thumbnail <> invalid
+                    node = createObject("roSGNode", "ContentNode")
+                    node.Title = item.title
+                    node.ShortDescriptionLine1 = item.title
+                    node.contentType = "movie"
+                    node.StreamFormat = "mp4"
+                    node.url = item.url
+                    node.hdPosterUrl = item.thumbnail
+                    node.HDPosterUrl = item.thumbnail
+                    node.sdPosterUrl = item.thumbnail
+                    node.FHDPosterUrl = item.thumbnail
+                    contentNode.appendChild(node)
+                    print "==> Added folder item: "; item.title
+                end if
+            end for
+
+            ' Update grid with folder content
+            m.grid.content = contentNode
+        else
+            print "==> Empty or invalid folder content"
+            navigateBack()
+        end if
+    else
+        print "==> Failed to load folder contents"
+        navigateBack()
+    end if
+end sub
+
+sub navigateBack()
+    print "==> Navigating back"
+
+    if m.navigationStack.Count() > 0
+        m.navigationStack.Pop()
+    end if
+
+    if m.navigationStack.Count() = 0
+        ' Back to root - reload main content
+        m.currentFolder = invalid
+        m.loader.url = m.baseUrl + "/json"
+        m.loader.control = "run"
+    else
+        ' Back to parent folder (if we support nested folders in the future)
+        m.currentFolder = m.navigationStack.Peek()
+        ' Load parent folder content
+    end if
 end sub
 
 
@@ -111,19 +210,33 @@ end sub
 
 function onKeyEvent(key, press) as Boolean
     if press = false then return false
-    if m.video.visible = false then return false
 
     print "==> Key pressed: "; key
 
+    ' Handle back button
     if key = "back"
-        ' Stop video and return to grid
-        print "==> Back button pressed - returning to grid"
-        m.video.control = "stop"
-        m.video.visible = false
-        m.grid.visible = true
-        m.grid.setFocus(true)
-        return true
-    else if key = "OK" or key = "Play"
+        ' If video is playing, stop it and return to grid
+        if m.video.visible = true
+            print "==> Back button pressed - stopping video"
+            m.video.control = "stop"
+            m.video.visible = false
+            m.grid.visible = true
+            m.grid.setFocus(true)
+            return true
+        ' If we're in a folder, navigate back to root
+        else if m.currentFolder <> invalid
+            print "==> Back button pressed - navigating to root"
+            navigateBack()
+            return true
+        end if
+        ' Otherwise, let default back behavior happen (exit app)
+        return false
+    end if
+
+    ' Video control keys (only when video is visible)
+    if m.video.visible = false then return false
+
+    if key = "OK" or key = "Play"
         print "==> Video state: "; m.video.state
         if m.video.state = "playing"
             m.video.control = "pause"
