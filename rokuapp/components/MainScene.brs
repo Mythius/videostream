@@ -9,6 +9,7 @@ sub init()
     m.baseUrl = URL
     m.currentFolder = invalid
     m.navigationStack = []
+    m.loadingFolder = false
 
     m.grid = m.top.findNode("posterGrid")
     if m.grid = invalid then
@@ -43,18 +44,22 @@ sub onContentLoaded()
     movieArray = m.loader.content
     if movieArray = invalid
         print "==> ERROR: invalid content"
+        if m.loadingFolder = true
+            print "==> Error loading folder, navigating back"
+            navigateBack()
+        end if
         return
     end if
 
     contentNode = createObject("roSGNode", "ContentNode")
 
     for each item in movieArray
-        if item.title <> invalid and item.thumbnail <> invalid
+        if item <> invalid and item.title <> invalid and item.thumbnail <> invalid
             node = createObject("roSGNode", "ContentNode")
             node.Title = item.title
 
             ' Check if this is a folder or a movie
-            if item.type = "folder"
+            if item.type = "folder" and m.loadingFolder = false
                 ' It's a folder - add folder indicator to title
                 folderTitle = "📁 " + item.title
                 if item.episodeCount <> invalid
@@ -66,7 +71,7 @@ sub onContentLoaded()
                 node.contentType = "folder"
                 node.url = item.url  ' Store folder URL for navigation
             else
-                ' It's a movie
+                ' It's a movie or folder content
                 node.ShortDescriptionLine1 = item.title
                 node.contentType = "movie"
                 node.StreamFormat = "mp4"
@@ -85,6 +90,7 @@ sub onContentLoaded()
 
     print "==> Setting posterGrid content with "; contentNode.getChildCount(); " items"
     m.grid.content = contentNode
+    m.loadingFolder = false
 end sub
 
 sub onSelect()
@@ -136,46 +142,10 @@ end sub
 sub loadFolderContents(folderUrl)
     print "==> Loading folder contents from: "; folderUrl
 
-    ' Fetch folder contents via JSON endpoint
-    urlTransfer = CreateObject("roUrlTransfer")
-    urlTransfer.SetUrl(folderUrl)
-    response = urlTransfer.GetToString()
-
-    if response <> invalid and response <> ""
-        json = ParseJson(response)
-        if json <> invalid and json.Count() > 0
-            print "==> Folder content loaded: "; json.Count(); " items"
-
-            ' Create content node for folder items
-            contentNode = createObject("roSGNode", "ContentNode")
-
-            for each item in json
-                if item.title <> invalid and item.url <> invalid and item.thumbnail <> invalid
-                    node = createObject("roSGNode", "ContentNode")
-                    node.Title = item.title
-                    node.ShortDescriptionLine1 = item.title
-                    node.contentType = "movie"
-                    node.StreamFormat = "mp4"
-                    node.url = item.url
-                    node.hdPosterUrl = item.thumbnail
-                    node.HDPosterUrl = item.thumbnail
-                    node.sdPosterUrl = item.thumbnail
-                    node.FHDPosterUrl = item.thumbnail
-                    contentNode.appendChild(node)
-                    print "==> Added folder item: "; item.title
-                end if
-            end for
-
-            ' Update grid with folder content
-            m.grid.content = contentNode
-        else
-            print "==> Empty or invalid folder content"
-            navigateBack()
-        end if
-    else
-        print "==> Failed to load folder contents"
-        navigateBack()
-    end if
+    ' Use the task node to load folder contents asynchronously
+    m.loadingFolder = true
+    m.loader.url = folderUrl
+    m.loader.control = "RUN"
 end sub
 
 sub navigateBack()
@@ -188,8 +158,9 @@ sub navigateBack()
     if m.navigationStack.Count() = 0
         ' Back to root - reload main content
         m.currentFolder = invalid
+        m.loadingFolder = false
         m.loader.url = m.baseUrl + "/json"
-        m.loader.control = "run"
+        m.loader.control = "RUN"
     else
         ' Back to parent folder (if we support nested folders in the future)
         m.currentFolder = m.navigationStack.Peek()
