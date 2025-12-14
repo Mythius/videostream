@@ -204,8 +204,8 @@ function authMiddleware(req, res, next) {
     return next();
   }
 
-  // Always allow access to /movies and /json endpoints (for Roku app)
-  if (req.path.startsWith("/movies/") || req.path === "/json") {
+  // Always allow access to /movies, /series, and /json endpoints (for Roku app)
+  if (req.path.startsWith("/movies/") || req.path.startsWith("/series/") || req.path.startsWith("/json")) {
     return next();
   }
 
