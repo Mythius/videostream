@@ -1519,12 +1519,6 @@ async function scanForRokuDevices() {
         console.log(`Found Roku device: ${device.name} at ${device.ip}`);
       }
     }
-
-    // If we've found devices, we can stop scanning
-    if (devices.length > 0 && i > batchSize * 2) {
-      console.log(`Found ${devices.length} device(s), stopping scan early`);
-      break;
-    }
   }
 
   console.log(`Total Roku devices found: ${devices.length}`);
