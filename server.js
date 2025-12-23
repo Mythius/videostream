@@ -757,7 +757,7 @@ app.get("/api/movies-list", requireAuth, (req, res) => {
 
 // API: Rename movie
 app.post("/api/rename-movie", requireAuth, express.json(), async (req, res) => {
-  const { oldName, newName } = req.body;
+  const { oldName, newName, searchNewThumbnail } = req.body;
 
   if (!oldName || !newName) {
     return res
@@ -779,28 +779,53 @@ app.post("/api/rename-movie", requireAuth, express.json(), async (req, res) => {
       return res.status(404).json({ error: "Movie not found" });
     }
 
-    // Check if new name already exists
-    if (fs.existsSync(newVideoPath)) {
+    const nameChanged = oldName !== newName;
+
+    // Check if new name already exists (only if name is changing)
+    if (nameChanged && fs.existsSync(newVideoPath)) {
       return res
         .status(400)
         .json({ error: "A movie with this name already exists" });
     }
 
-    // Rename video file
-    fs.renameSync(oldVideoPath, newVideoPath);
-
-    // Rename thumbnail if it exists
-    if (fs.existsSync(oldThumbnailPath)) {
-      fs.renameSync(oldThumbnailPath, newThumbnailPath);
+    // Rename video file (only if name is changing)
+    if (nameChanged) {
+      fs.renameSync(oldVideoPath, newVideoPath);
     }
 
-    console.log(`Renamed movie: ${oldName} -> ${newName}`);
+    // Handle thumbnail based on searchNewThumbnail flag
+    if (searchNewThumbnail) {
+      // Delete old thumbnail if it exists
+      if (fs.existsSync(oldThumbnailPath)) {
+        fs.unlinkSync(oldThumbnailPath);
+        console.log(`Deleted old thumbnail: ${oldThumbnailPath}`);
+      }
+      // Delete new thumbnail if it exists (in case of re-rename or same name)
+      if (nameChanged && fs.existsSync(newThumbnailPath)) {
+        fs.unlinkSync(newThumbnailPath);
+        console.log(`Deleted existing thumbnail at new path: ${newThumbnailPath}`);
+      }
 
-    // Fetch new thumbnail for the renamed movie in the background
-    const getThumbnails = require("./diskrip/get_thumbnails.js");
-    getThumbnails.main().catch((error) => {
-      console.error("Error fetching thumbnails after rename:", error.message);
-    });
+      if (nameChanged) {
+        console.log(`Renamed movie: ${oldName} -> ${newName} (searching for new thumbnail)`);
+      } else {
+        console.log(`Refreshing thumbnail for: ${oldName}`);
+      }
+
+      // Fetch new thumbnail for the movie in the background
+      const getThumbnails = require("./diskrip/get_thumbnails.js");
+      getThumbnails.main().catch((error) => {
+        console.error("Error fetching thumbnails after rename:", error.message);
+      });
+    } else if (nameChanged) {
+      // Just rename the thumbnail if it exists (and name changed)
+      if (fs.existsSync(oldThumbnailPath)) {
+        fs.renameSync(oldThumbnailPath, newThumbnailPath);
+        console.log(`Renamed thumbnail: ${oldThumbnailPath} -> ${newThumbnailPath}`);
+      }
+
+      console.log(`Renamed movie: ${oldName} -> ${newName} (kept existing thumbnail)`);
+    }
 
     res.json({ success: true });
   } catch (error) {
@@ -1242,14 +1267,26 @@ app.post("/api/update-software", requireAuth, (req, res) => {
         }
         console.log("Git pull output:", stdout);
 
-        // After successful git pull, restart the service
-        exec("sudo systemctl restart stream.service", (restartError, restartStdout, restartStderr) => {
-          if (restartError) {
-            console.error("Service restart error:", restartError);
-            console.error("stderr:", restartStderr);
+        // After successful git pull, restart both services
+        console.log("Restarting ripdisk service...");
+        exec("sudo systemctl restart ripdisk.service", (ripdiskError, ripdiskStdout, ripdiskStderr) => {
+          if (ripdiskError) {
+            console.error("Ripdisk service restart error:", ripdiskError);
+            console.error("stderr:", ripdiskStderr);
           } else {
-            console.log("Service restart initiated:", restartStdout);
+            console.log("Ripdisk service restart initiated:", ripdiskStdout);
           }
+
+          // Restart main stream service (this will kill the current process)
+          console.log("Restarting stream service...");
+          exec("sudo systemctl restart stream.service", (restartError, restartStdout, restartStderr) => {
+            if (restartError) {
+              console.error("Stream service restart error:", restartError);
+              console.error("stderr:", restartStderr);
+            } else {
+              console.log("Stream service restart initiated:", restartStdout);
+            }
+          });
         });
       });
     }, 500); // 500ms delay to ensure response is sent
@@ -1573,6 +1610,8 @@ async function buildAndDeployRokuApp(rokuIp, username, password) {
           "mysubmit=Replace",
           "-F",
           `archive=@${zipPath}`,
+          "-w",
+          "\n%{http_code}",  // Write HTTP status code at the end
           `http://${rokuIp}/plugin_install`,
         ];
 
@@ -1594,17 +1633,28 @@ async function buildAndDeployRokuApp(rokuIp, username, password) {
           if (fs.existsSync(tempMainScenePath))
             fs.unlinkSync(tempMainScenePath);
 
-          if (code === 0) {
+          // Extract HTTP status code from output
+          const lines = output.trim().split('\n');
+          const httpCode = lines[lines.length - 1];
+          const responseBody = lines.slice(0, -1).join('\n');
+
+          console.log(`Roku deployment HTTP status: ${httpCode}`);
+          console.log("Response body:", responseBody);
+
+          if (code === 0 && httpCode === "200") {
             console.log("Roku app deployed successfully");
-            console.log("Response:", output);
             resolve();
-          } else {
+          } else if (httpCode === "401") {
+            reject(new Error("Authentication failed. Please check your developer password."));
+          } else if (code !== 0) {
             console.error("curl stderr:", errorOutput);
             reject(
               new Error(
                 `Deployment failed with exit code ${code}: ${errorOutput}`
               )
             );
+          } else {
+            reject(new Error(`Deployment failed with HTTP status ${httpCode}. Response: ${responseBody}`));
           }
         });
 

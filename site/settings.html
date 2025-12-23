@@ -883,7 +883,6 @@
     <div class="edit-menu-popup" id="editMenuPopup">
       <div class="popup-header">Edit Movie</div>
       <div id="editMenuContent"></div>
-      <button class="popup-close" onclick="closeEditMenu()">Close</button>
     </div>
 
     <script>
@@ -1168,7 +1167,7 @@
         const content = document.getElementById("editMenuContent");
 
         content.innerHTML = `
-          <div class="popup-option" onclick="renameMovie('${movieTitle.replace(
+          <div class="popup-option" onclick="showRenameDialog('${movieTitle.replace(
             /'/g,
             "\\'"
           )}')">
@@ -1594,16 +1593,60 @@
         }
       }
 
-      async function renameMovie(oldName) {
-        const newName = prompt("Enter new name for the movie:", oldName);
-        if (!newName || newName === oldName) return;
+      function showRenameDialog(oldName) {
+        const popup = document.getElementById("editMenuPopup");
+        const content = document.getElementById("editMenuContent");
+
+        content.innerHTML = `
+          <div style="margin-bottom: 20px;">
+            <div style="font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">
+              Rename Movie
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+              <label for="newMovieName">New Name</label>
+              <input type="text" id="newMovieName" value="${escapeHtml(oldName)}" style="width: 100%; padding: 12px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; color: white; font-size: 1em;">
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="searchNewThumbnail">
+                <span>Search for new thumbnail</span>
+              </label>
+              <small style="color: rgba(255, 255, 255, 0.6); display: block; margin-top: 5px; margin-left: 30px;">
+                If checked, the old thumbnail will be deleted and a new one will be searched based on the movie name (you can check this without renaming)
+              </small>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button class="btn" style="flex: 1;" onclick="submitRename('${oldName.replace(/'/g, "\\'")}')">Save</button>
+              <button class="btn btn-secondary" style="flex: 1;" onclick="closeEditMenu()">Cancel</button>
+            </div>
+          </div>
+        `;
+      }
+
+      async function submitRename(oldName) {
+        const newName = document.getElementById('newMovieName').value.trim();
+        const searchNewThumbnail = document.getElementById('searchNewThumbnail').checked;
+
+        if (!newName) {
+          showMessage("generalMessage", "Movie name cannot be empty", "error");
+          return;
+        }
+
+        // Check if anything changed
+        const nameChanged = newName !== oldName;
+
+        if (!nameChanged && !searchNewThumbnail) {
+          // Nothing to do
+          closeEditMenu();
+          return;
+        }
 
         try {
           const response = await fetch("/api/rename-movie", {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ oldName, newName }),
+            body: JSON.stringify({ oldName, newName, searchNewThumbnail }),
           });
 
           if (response.status === 401) {
@@ -1614,11 +1657,17 @@
 
           const result = await response.json();
           if (result.success) {
-            showMessage(
-              "generalMessage",
-              "Movie renamed successfully!",
-              "success"
-            );
+            let message = "";
+            if (nameChanged && searchNewThumbnail) {
+              message = "Movie renamed successfully! Searching for new thumbnail...";
+            } else if (nameChanged) {
+              message = "Movie renamed successfully!";
+            } else if (searchNewThumbnail) {
+              message = "Searching for new thumbnail...";
+            }
+
+            showMessage("generalMessage", message, "success");
+            closeEditMenu();
             loadMovies(); // Reload the list
           } else {
             showMessage("generalMessage", "Error: " + result.error, "error");
@@ -1626,7 +1675,7 @@
         } catch (error) {
           showMessage(
             "generalMessage",
-            "Error renaming movie: " + error.message,
+            "Error: " + error.message,
             "error"
           );
         }

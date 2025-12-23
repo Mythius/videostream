@@ -147,19 +147,16 @@ else
 fi
 
 echo ""
-echo "Setting up udev rule for automatic disk detection..."
+echo "Removing old udev rule (no longer needed - service now runs continuously)..."
 UDEV_RULE="/etc/udev/rules.d/99-cdrom.rules"
-UDEV_CONTENT='# Trigger on CD/DVD insertion
-KERNEL=="sr[0-9]*", ACTION=="change", ENV{DISK_MEDIA_CHANGE}=="1", RUN+="/bin/systemctl restart ripdisk.service"'
 
-# Only update if changed or doesn't exist
-if [ ! -f "$UDEV_RULE" ] || ! diff -q <(echo "$UDEV_CONTENT") "$UDEV_RULE" &>/dev/null; then
-    echo "Updating udev rule..."
-    echo "$UDEV_CONTENT" > "$UDEV_RULE"
+if [ -f "$UDEV_RULE" ]; then
+    echo "Removing old udev rule..."
+    rm -f "$UDEV_RULE"
     udevadm control --reload-rules
-    echo "✓ Udev rule updated"
+    echo "✓ Old udev rule removed"
 else
-    echo "✓ Udev rule already up to date"
+    echo "✓ No old udev rule found"
 fi
 
 echo ""

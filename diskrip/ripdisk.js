@@ -603,131 +603,10 @@ async function ripToMKV(discInfo) {
   });
 }
 
-/**
- * Monitor ffmpeg process completion and send notification when done
- */
-function monitorFFmpegCompletion(
-  pid,
-  mp4File,
-  movieName,
-  logFile,
-  mkvFile = null
-) {
-  const checkInterval = 5000; // Check every 5 seconds
-  let lastSize = 0;
-  let unchangedCount = 0;
-
-  log(`Starting background monitor for ffmpeg PID ${pid}`);
-
-  const monitor = setInterval(() => {
-    // Check if process is still running
-    let processRunning = false;
-    try {
-      process.kill(pid, 0);
-      processRunning = true;
-    } catch (err) {
-      processRunning = false;
-    }
-
-    // Check if MP4 file exists and get its size
-    let currentSize = 0;
-    let fileExists = false;
-    try {
-      const stats = fs.statSync(mp4File);
-      currentSize = stats.size;
-      fileExists = true;
-    } catch (err) {
-      fileExists = false;
-    }
-
-    // If process is not running
-    if (!processRunning) {
-      clearInterval(monitor);
-
-      if (fileExists && currentSize > 0) {
-        // Process finished and file exists - success!
-        log(`✓ FFmpeg compression completed for "${movieName}"`);
-        log(`Final file size: ${(currentSize / 1024 / 1024).toFixed(2)} MB`);
-        sendNotification(
-          "success",
-          "Compression Complete",
-          `"${movieName}" is now ready to stream`
-        );
-
-        // Clean up MKV file if specified and keepMKV is false
-        if (mkvFile && !config.keepMKV) {
-          try {
-            if (fs.existsSync(mkvFile)) {
-              log(`Deleting source MKV file: ${mkvFile}`);
-              fs.unlinkSync(mkvFile);
-              log(`✓ MKV file deleted successfully`);
-
-              // Try to remove parent directory if empty
-              const parentDir = path.dirname(mkvFile);
-              try {
-                const files = fs.readdirSync(parentDir);
-                if (files.length === 0 && parentDir !== config.tempFolder) {
-                  fs.rmdirSync(parentDir);
-                  log(`✓ Cleaned up empty directory: ${parentDir}`);
-                }
-              } catch (dirErr) {
-                // Ignore errors cleaning up directory
-              }
-            }
-          } catch (deleteErr) {
-            log(`Warning: Failed to delete MKV file: ${deleteErr.message}`);
-          }
-        }
-      } else {
-        // Process finished but no file - error
-        log(
-          `✗ FFmpeg process ended but no output file found for "${movieName}"`
-        );
-        sendNotification(
-          "error",
-          "Compression Failed",
-          `Failed to compress "${movieName}". Check logs for details.`
-        );
-
-        // Try to read log file for error details
-        try {
-          const logContent = fs.readFileSync(logFile, "utf8");
-          log(`FFmpeg log:\n${logContent.slice(-1000)}`); // Last 1000 chars
-        } catch (readErr) {
-          log(`Could not read ffmpeg log file: ${readErr.message}`);
-        }
-      }
-      return;
-    }
-
-    // Process is still running - check if file is still growing
-    if (fileExists) {
-      if (currentSize === lastSize) {
-        unchangedCount++;
-        // If file hasn't changed in 30 seconds (6 checks), might be stalled
-        if (unchangedCount >= 6) {
-          log(
-            `Warning: MP4 file size hasn't changed in ${
-              (unchangedCount * checkInterval) / 1000
-            }s`
-          );
-        }
-      } else {
-        unchangedCount = 0;
-        log(
-          `Compression in progress: ${(currentSize / 1024 / 1024).toFixed(
-            2
-          )} MB (PID: ${pid})`
-        );
-      }
-      lastSize = currentSize;
-    }
-  }, checkInterval);
-}
 
 /**
  * Convert MKV to MP4 using FFmpeg
- * Runs as a detached background process to survive service restarts
+ * Runs in foreground with full logging
  */
 async function convertToMP4(
   mkvFile,
@@ -743,83 +622,141 @@ async function convertToMP4(
     const displayName = movieName || mp4Name;
 
     log(`Converting ${basename}.mkv to MP4 as ${mp4Name}...`);
-    log("Starting ffmpeg as detached process to survive service restarts...");
+    log(`Output file: ${mp4File}`);
 
-    // Create a log file for ffmpeg output
-    const logFile = path.join(config.tempFolder, `ffmpeg-${Date.now()}.log`);
+    // Build ffmpeg arguments
+    const ffmpegArgs = [
+      "-i",
+      mkvFile,
+      "-c:v",
+      config.mp4Settings.videoCodec,
+      "-preset",
+      config.mp4Settings.preset,
+      "-crf",
+      config.mp4Settings.crf.toString(),
+      "-c:a",
+      config.mp4Settings.audioCodec,
+      "-b:a",
+      "192k",
+      "-profile:a",
+      "aac_low", // Use AAC-LC profile for maximum compatibility with iOS/Safari
+      "-ar",
+      "48000", // Ensure 48kHz sample rate for compatibility
+      "-movflags",
+      "+faststart",
+      "-y", // Overwrite output file if it exists
+      mp4File,
+    ];
 
-    // Build ffmpeg command with nohup to ensure it survives parent exit
-    // Using shell command with nohup ensures the process won't receive SIGTERM
-    const ffmpegCmd = `nohup ffmpeg -i "${mkvFile}" -c:v ${config.mp4Settings.videoCodec} -preset ${config.mp4Settings.preset} -crf ${config.mp4Settings.crf} -c:a ${config.mp4Settings.audioCodec} -b:a 192k -movflags +faststart "${mp4File}" >> "${logFile}" 2>&1 &`;
+    log(`Executing: ffmpeg ${ffmpegArgs.join(" ")}`);
 
-    log(`Executing: ${ffmpegCmd}`);
+    const ffmpeg = spawn("ffmpeg", ffmpegArgs);
 
-    // Execute the command in a shell to spawn truly independent process
-    exec(ffmpegCmd);
+    let lastProgress = "";
 
-    log(`FFmpeg output will be written to: ${logFile}`);
+    // Capture stderr for progress and error messages
+    ffmpeg.stderr.on("data", (data) => {
+      const text = data.toString();
 
-    // Give the process a moment to start and get its PID
-    setTimeout(() => {
-      try {
-        // Try to find the ffmpeg process by looking for our specific output file
-        const { execSync } = require("child_process");
-        const psOutput = execSync(
-          `ps aux | grep "[f]fmpeg.*${path.basename(
-            mp4File
-          )}" | awk '{print $2}'`
-        )
-          .toString()
-          .trim();
-
-        if (psOutput) {
-          const ffmpegPid = parseInt(psOutput.split("\n")[0]);
-          log(`✓ FFmpeg process confirmed running (PID: ${ffmpegPid})`);
-          log(
-            `Note: Conversion will continue in background. Check ${mp4File} for completion.`
-          );
-
-          // Start monitoring the process for completion
-          // Pass mkvFile for cleanup only if cleanupMkv is true
-          monitorFFmpegCompletion(
-            ffmpegPid,
-            mp4File,
-            displayName,
-            logFile,
-            cleanupMkv ? mkvFile : null
-          );
-
-          resolve(mp4File);
-        } else {
-          // Process might not have started or already finished
-          log("Warning: FFmpeg process not found in process list");
-
-          // Check if process failed immediately by looking at log
-          setTimeout(() => {
-            try {
-              const logContent = fs.readFileSync(logFile, "utf8");
-              if (logContent.toLowerCase().includes("error")) {
-                log(`FFmpeg error detected:\n${logContent.slice(-500)}`);
-                reject(
-                  new Error(`FFmpeg failed to start. Check log: ${logFile}`)
-                );
-              } else {
-                // Process might have started and finished very quickly (unlikely for video)
-                log("FFmpeg process completed or log is empty");
-                resolve(mp4File);
-              }
-            } catch (readErr) {
-              log("Could not read ffmpeg log file");
-              resolve(mp4File); // Resolve anyway, monitor will catch failures
-            }
-          }, 500);
-        }
-      } catch (err) {
-        log(`Error finding ffmpeg process: ${err.message}`);
-        // Still resolve - the file monitoring will detect if conversion failed
-        resolve(mp4File);
+      // FFmpeg outputs progress to stderr
+      // Look for time= to show progress
+      const timeMatch = text.match(/time=(\d+:\d+:\d+\.\d+)/);
+      if (timeMatch && timeMatch[1] !== lastProgress) {
+        lastProgress = timeMatch[1];
+        log(`Compression progress: ${lastProgress}`);
       }
-    }, 1000);
+
+      // Check for errors
+      if (
+        text.toLowerCase().includes("error") ||
+        text.toLowerCase().includes("invalid") ||
+        text.toLowerCase().includes("failed")
+      ) {
+        log(`FFmpeg error/warning: ${text.trim()}`);
+      }
+    });
+
+    ffmpeg.stdout.on("data", (data) => {
+      log(`FFmpeg output: ${data.toString().trim()}`);
+    });
+
+    ffmpeg.on("error", (error) => {
+      log(`✗ Failed to start ffmpeg: ${error.message}`);
+      reject(error);
+    });
+
+    ffmpeg.on("close", (code) => {
+      if (code === 0) {
+        // Check if output file was created and has size
+        try {
+          const stats = fs.statSync(mp4File);
+          if (stats.size > 0) {
+            log(`✓ FFmpeg compression completed for "${displayName}"`);
+            log(
+              `Final file size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`
+            );
+            sendNotification(
+              "success",
+              "Compression Complete",
+              `"${displayName}" is now ready to stream`
+            );
+
+            // Clean up MKV file if specified
+            if (cleanupMkv && mkvFile) {
+              try {
+                if (fs.existsSync(mkvFile)) {
+                  log(`Deleting source MKV file: ${mkvFile}`);
+                  fs.unlinkSync(mkvFile);
+                  log(`✓ MKV file deleted successfully`);
+
+                  // Try to remove parent directory if empty
+                  const parentDir = path.dirname(mkvFile);
+                  try {
+                    const files = fs.readdirSync(parentDir);
+                    if (files.length === 0 && parentDir !== config.tempFolder) {
+                      fs.rmdirSync(parentDir);
+                      log(`✓ Cleaned up empty directory: ${parentDir}`);
+                    }
+                  } catch (dirErr) {
+                    // Ignore errors cleaning up directory
+                  }
+                }
+              } catch (deleteErr) {
+                log(`Warning: Failed to delete MKV file: ${deleteErr.message}`);
+              }
+            }
+
+            resolve(mp4File);
+          } else {
+            log(`✗ FFmpeg created empty file for "${displayName}"`);
+            sendNotification(
+              "error",
+              "Compression Failed",
+              `Failed to compress "${displayName}" - output file is empty`
+            );
+            reject(new Error("FFmpeg created empty output file"));
+          }
+        } catch (statErr) {
+          log(
+            `✗ FFmpeg completed but output file not found for "${displayName}"`
+          );
+          sendNotification(
+            "error",
+            "Compression Failed",
+            `Failed to compress "${displayName}" - output file not created`
+          );
+          reject(new Error("FFmpeg output file not found"));
+        }
+      } else {
+        log(`✗ FFmpeg exited with code ${code} for "${displayName}"`);
+        sendNotification(
+          "error",
+          "Compression Failed",
+          `Failed to compress "${displayName}". Check logs for details.`
+        );
+        reject(new Error(`FFmpeg exited with code ${code}`));
+      }
+    });
   });
 }
 
@@ -894,7 +831,20 @@ async function ripDisc() {
 
     // Rip to MKV
     const { mkvFiles, outputPath, createdSubfolder } = await ripToMKV(discInfo);
-    log(`Created ${mkvFiles.length} MKV files`);
+
+    log(`✓ MakeMKV completed successfully`);
+    log(`Created ${mkvFiles.length} MKV file(s):`);
+    mkvFiles.forEach((file, idx) => {
+      const stats = fs.statSync(file);
+      log(`  ${idx + 1}. ${path.basename(file)} - ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+    });
+
+    // Verify we got the expected number of files
+    const expectedCount = Math.min(config.titlesToRip || 1, discInfo.titleCount);
+    if (mkvFiles.length !== expectedCount) {
+      log(`⚠ Warning: Expected ${expectedCount} MKV files but got ${mkvFiles.length}`);
+      log(`This may happen if some titles failed to rip or were too short`);
+    }
 
     // Eject disc immediately after MKV ripping (disc is no longer needed)
     // This allows the user to insert the next disc while MP4 conversion happens
@@ -924,6 +874,9 @@ async function ripDisc() {
     );
 
     // Convert each MKV to MP4
+    // Sort MKV files to ensure consistent ordering
+    mkvFiles.sort();
+
     for (let i = 0; i < mkvFiles.length; i++) {
       const mkvFile = mkvFiles[i];
       const movieBase = humanizeName(discInfo.name);
@@ -933,10 +886,11 @@ async function ripDisc() {
         outputFilename = `${movieBase}.mp4`;
         displayName = movieBase;
       } else {
-        // If multiple titles, append the original mkv basename to keep uniqueness
-        const titleBasename = path.basename(mkvFile, ".mkv");
-        outputFilename = `${movieBase} - ${titleBasename}.mp4`;
-        displayName = `${movieBase} - Part ${i + 1}`;
+        // If multiple titles, number them sequentially (Part 1, Part 2, etc.)
+        // Use zero-padded numbering if more than 9 titles
+        const partNumber = String(i + 1).padStart(mkvFiles.length > 9 ? 2 : 1, '0');
+        outputFilename = `${movieBase} - Part ${partNumber}.mp4`;
+        displayName = `${movieBase} - Part ${partNumber}`;
       }
 
       try {
@@ -950,20 +904,18 @@ async function ripDisc() {
           displayName
         );
         log(
-          `✓ Successfully started conversion ${i + 1}/${
-            mkvFiles.length
-          } (running in background)`
+          `✓ Successfully completed conversion ${i + 1}/${mkvFiles.length}`
         );
       } catch (conversionError) {
         log(
-          `✗ Failed to start conversion ${path.basename(mkvFile)}: ${
+          `✗ Failed to convert ${path.basename(mkvFile)}: ${
             conversionError.message
           }`
         );
         sendNotification(
           "error",
           "Compression Failed",
-          `Failed to start converting "${displayName}": ${conversionError.message}`
+          `Failed to convert "${displayName}": ${conversionError.message}`
         );
         throw conversionError; // Re-throw to trigger main error handler
       }
@@ -988,14 +940,8 @@ async function ripDisc() {
       fs.rmdirSync(outputPath, { recursive: true });
     }
 
-    log(`=== Ripping and conversion started! ===`);
-    log(`MKV files created, MP4 conversion running in background`);
-    log(`Files will be saved to: ${finalOutputFolder}`);
-    sendNotification(
-      "info",
-      "Ripping Complete",
-      `"${discInfo.name}" is being compressed to MP4`
-    );
+    log(`=== Ripping and conversion completed! ===`);
+    log(`All files have been processed and saved to: ${finalOutputFolder}`);
 
     // Fetch thumbnail for the newly ripped movie
     log("Fetching thumbnail for newly ripped movie...");
@@ -1029,12 +975,6 @@ async function ripDisc() {
         `Error during disc ripping: ${errorMsg}`
       );
     }
-
-    sendNotification(
-      "error",
-      "Ripping Failed",
-      "An error occurred during disc ripping"
-    );
 
     // Try to eject disc even on error (cleanup)
     if (config.autoEject) {
@@ -1166,12 +1106,12 @@ async function deleteZeroByteMP4Files() {
 }
 
 /**
- * Scan temp folder for orphaned MKV files and convert them to MP4
+ * Scan temp folder for unfinished MKV files and convert them to MP4
  * This handles cases where conversion may have failed or was interrupted
  */
-async function processOrphanedMkvFiles() {
+async function processUnfinishedMkvFiles() {
   try {
-    log("Checking for orphaned MKV files in temp folder...");
+    log("Checking for DVDs that haven't finished compressing...");
 
     // Function to recursively find all MKV files in a directory
     function findMkvFiles(dir, fileList = []) {
@@ -1192,11 +1132,11 @@ async function processOrphanedMkvFiles() {
     const mkvFiles = findMkvFiles(config.tempFolder);
 
     if (mkvFiles.length === 0) {
-      log("No orphaned MKV files found");
+      log("No unfinished DVD files found");
       return;
     }
 
-    log(`Found ${mkvFiles.length} orphaned MKV file(s):`);
+    log(`Found ${mkvFiles.length} unfinished DVD file(s) to compress:`);
     mkvFiles.forEach((file) => log(`  - ${file}`));
 
     // Determine output folder
@@ -1213,6 +1153,9 @@ async function processOrphanedMkvFiles() {
     }
 
     // Process each MKV file
+    // Sort for consistent ordering
+    mkvFiles.sort();
+
     for (let i = 0; i < mkvFiles.length; i++) {
       const mkvFile = mkvFiles[i];
       const basename = path.basename(mkvFile, ".mkv");
@@ -1227,8 +1170,20 @@ async function processOrphanedMkvFiles() {
       }
 
       // Humanize the name
-      const displayName = humanizeName(movieName);
-      const outputFilename = `${displayName}.mp4`;
+      const movieBase = humanizeName(movieName);
+
+      // Use same naming logic as main conversion loop
+      let outputFilename;
+      let displayName;
+      if (mkvFiles.length === 1) {
+        outputFilename = `${movieBase}.mp4`;
+        displayName = movieBase;
+      } else {
+        // If multiple files, number them sequentially (Part 1, Part 2, etc.)
+        const partNumber = String(i + 1).padStart(mkvFiles.length > 9 ? 2 : 1, '0');
+        outputFilename = `${movieBase} - Part ${partNumber}.mp4`;
+        displayName = `${movieBase} - Part ${partNumber}`;
+      }
 
       // Check if MP4 already exists in output folder
       const mp4Path = path.join(finalOutputFolder, outputFilename);
@@ -1239,11 +1194,11 @@ async function processOrphanedMkvFiles() {
 
       try {
         log(
-          `Converting orphaned MKV ${i + 1}/${mkvFiles.length}: ${basename}.mkv`
+          `Converting unfinished DVD ${i + 1}/${mkvFiles.length}: ${basename}.mkv`
         );
         sendNotification(
           "info",
-          "Recovering Unprocessed Video File",
+          "Resuming DVD Compression",
           `Converting "${displayName}" to MP4`
         );
         await convertToMP4(
@@ -1254,23 +1209,47 @@ async function processOrphanedMkvFiles() {
           true
         );
         log(
-          `✓ Successfully started conversion for orphaned MKV (running in background)`
+          `✓ Successfully completed conversion ${i + 1}/${mkvFiles.length}`
         );
       } catch (conversionError) {
         log(
-          `✗ Failed to convert orphaned MKV ${basename}.mkv: ${conversionError.message}`
+          `✗ Failed to convert ${basename}.mkv: ${conversionError.message}`
         );
         sendNotification(
           "error",
-          "Recovery Failed",
-          `Failed to unprocessed video file: "${displayName}"`
+          "Compression Failed",
+          `Failed to convert "${displayName}"`
         );
       }
     }
 
-    log("Orphaned MKV processing complete");
+    log("Finished processing unfinished DVDs");
   } catch (error) {
-    log(`Error processing orphaned MKV files: ${error.message}`);
+    log(`Error processing unfinished DVD files: ${error.message}`);
+  }
+}
+
+/**
+ * Remove old udev rule if it exists (no longer needed)
+ */
+async function removeOldUdevRule() {
+  const UDEV_RULE = "/etc/udev/rules.d/99-cdrom.rules";
+
+  try {
+    if (fs.existsSync(UDEV_RULE)) {
+      log("Found old udev rule - removing it (no longer needed)...");
+      fs.unlinkSync(UDEV_RULE);
+
+      // Reload udev rules
+      await execPromise("udevadm control --reload-rules").catch(() => {
+        log("Warning: Could not reload udev rules (udevadm might not be available)");
+      });
+
+      log("✓ Old udev rule removed successfully");
+    }
+  } catch (error) {
+    log(`Warning: Could not remove old udev rule: ${error.message}`);
+    log("This is not critical - the service will still work correctly");
   }
 }
 
@@ -1279,6 +1258,9 @@ async function processOrphanedMkvFiles() {
  */
 async function main() {
   log("=== CD/DVD Auto-Ripper Started ===");
+
+  // Remove old udev rule if it exists
+  await removeOldUdevRule();
 
   // Log process information
   log(`Process UID: ${process.getuid()}, GID: ${process.getgid()}`);
@@ -1353,8 +1335,8 @@ async function main() {
   // Check for and delete any 0-byte MP4 files on startup
   await deleteZeroByteMP4Files();
 
-  // Check for and process any orphaned MKV files on startup
-  await processOrphanedMkvFiles();
+  // Check for and process any unfinished MKV files on startup
+  await processUnfinishedMkvFiles();
 
   log(
     `Waiting for disc insertion (checking every ${
