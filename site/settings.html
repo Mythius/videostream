@@ -676,7 +676,12 @@
       <!-- Movies Tab -->
       <div id="movies-tab" class="tab-content">
         <div class="section">
-          <h2>Manage Movies</h2>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0;">Manage Movies</h2>
+            <div id="movieCount" style="color: rgba(255, 255, 255, 0.7); font-size: 1em;">
+              Loading...
+            </div>
+          </div>
           <div class="movie-list" id="movieList">
             <p style="text-align: center; color: rgba(255, 255, 255, 0.5)">
               Loading movies...
@@ -1107,6 +1112,26 @@
 
       function renderMovies() {
         const movieList = document.getElementById("movieList");
+        const movieCountEl = document.getElementById("movieCount");
+
+        // Count movies and folders separately
+        const movieCount = movies.filter(item => item.type === "movie").length;
+        const folderCount = movies.filter(item => item.type === "folder").length;
+
+        // Update count display
+        if (movies.length === 0) {
+          movieCountEl.textContent = "No items";
+        } else {
+          const parts = [];
+          if (movieCount > 0) {
+            parts.push(`${movieCount} ${movieCount === 1 ? "movie" : "movies"}`);
+          }
+          if (folderCount > 0) {
+            parts.push(`${folderCount} ${folderCount === 1 ? "folder" : "folders"}`);
+          }
+          movieCountEl.textContent = parts.join(", ");
+        }
+
         if (movies.length === 0) {
           movieList.innerHTML =
             '<p style="text-align: center; color: rgba(255, 255, 255, 0.5);">No movies found</p>';
