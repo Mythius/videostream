@@ -46,6 +46,23 @@ function log(message) {
 }
 
 /**
+ * Reload configuration from config.json
+ * This allows settings changes to take effect without restarting the service
+ */
+function reloadConfig() {
+  try {
+    const rootConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+    config = rootConfig.diskrip;
+    outputFolder = rootConfig.videoDirectory;
+    log("Configuration reloaded from config.json");
+    return true;
+  } catch (error) {
+    log(`Warning: Failed to reload config: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Send notification to server
  */
 function sendNotification(type, title, message) {
@@ -1048,6 +1065,8 @@ async function checkForDisc() {
     // Only log and rip when a disc is newly detected (state change)
     if (discPresent && discStateChanged) {
       log("Disc detected in drive!");
+      // Reload config to pick up any changes made in settings
+      reloadConfig();
       await ripDisc();
     }
   } catch (error) {
