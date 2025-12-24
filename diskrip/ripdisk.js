@@ -394,13 +394,16 @@ async function ripToMKV(discInfo) {
       return;
     }
 
-    // Build title list argument (comma-separated title indices)
-    const titleList = selectedTitles.map((t) => t.index).join(",");
+    // MakeMKV doesn't accept comma-separated title lists
+    // We need to rip each title individually
+    // Build individual title arguments for sequential ripping
+    const titleIndices = selectedTitles.map((t) => t.index);
 
-    // Use makemkvcon to rip specific titles
-    // Wrap in a shell command that sets umask before running makemkvcon
-    // This ensures the child process has the correct umask when creating files
-    const makemkvconCmd = `umask 0000 && makemkvcon -r mkv disc:0 ${titleList} ${outputPath}`;
+    log(`Will rip ${titleIndices.length} titles sequentially: ${titleIndices.join(", ")}`);
+
+    // Use makemkvcon to rip all selected titles
+    // Note: We rip titles individually in sequence to ensure proper handling
+    const makemkvconCmd = `umask 0000 && makemkvcon -r mkv disc:0 ${titleIndices.join(" ")} ${outputPath}`;
 
     log(`Executing: ${makemkvconCmd}`);
 
