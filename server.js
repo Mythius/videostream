@@ -1162,9 +1162,22 @@ app.post("/api/split-episode", requireAuth, express.json(), async (req, res) => 
     const partMatch = movieName.match(/^(.+?)(?: Part (\d+))?$/);
     const baseName = partMatch ? partMatch[1] : movieName;
 
-    // Create temporary output paths
-    const part1Path = path.join(folderPath, `${baseName} Part 1.mp4`);
-    const part2Path = path.join(folderPath, `${baseName} Part 2.mp4`);
+    // Determine output file names
+    let part1Name, part2Name;
+    const defaultPart1Path = path.join(folderPath, `${baseName} Part 1.mp4`);
+    const defaultPart2Path = path.join(folderPath, `${baseName} Part 2.mp4`);
+
+    // If Part 1 and Part 2 already exist, use Section naming instead
+    if (fs.existsSync(defaultPart1Path) || fs.existsSync(defaultPart2Path)) {
+      part1Name = `${movieName} - Section 1`;
+      part2Name = `${movieName} - Section 2`;
+    } else {
+      part1Name = `${baseName} Part 1`;
+      part2Name = `${baseName} Part 2`;
+    }
+
+    const part1Path = path.join(folderPath, `${part1Name}.mp4`);
+    const part2Path = path.join(folderPath, `${part2Name}.mp4`);
 
     // Check if output files already exist
     if (fs.existsSync(part1Path) || fs.existsSync(part2Path)) {
