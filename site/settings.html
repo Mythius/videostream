@@ -712,6 +712,7 @@
               Loading...
             </div>
           </div>
+          <div class="message" id="moviesMessage"></div>
           <div class="movie-list" id="movieList">
             <p style="text-align: center; color: rgba(255, 255, 255, 0.5)">
               Loading movies...
@@ -1745,7 +1746,7 @@
 
         if (!newName) {
           showMessage(
-            "generalMessage",
+            "moviesMessage",
             "Episode name cannot be empty",
             "error"
           );
@@ -1774,17 +1775,17 @@
           const result = await response.json();
           if (result.success) {
             showMessage(
-              "generalMessage",
+              "moviesMessage",
               "Episode renamed successfully!",
               "success"
             );
             closeEditMenu();
             loadMovies();
           } else {
-            showMessage("generalMessage", "Error: " + result.error, "error");
+            showMessage("moviesMessage", "Error: " + result.error, "error");
           }
         } catch (error) {
-          showMessage("generalMessage", "Error: " + error.message, "error");
+          showMessage("moviesMessage", "Error: " + error.message, "error");
         }
       }
 
@@ -1814,17 +1815,17 @@
           const result = await response.json();
           if (result.success) {
             showMessage(
-              "generalMessage",
+              "moviesMessage",
               "Episode deleted successfully!",
               "success"
             );
             closeEditMenu();
             loadMovies();
           } else {
-            showMessage("generalMessage", "Error: " + result.error, "error");
+            showMessage("moviesMessage", "Error: " + result.error, "error");
           }
         } catch (error) {
-          showMessage("generalMessage", "Error: " + error.message, "error");
+          showMessage("moviesMessage", "Error: " + error.message, "error");
         }
       }
 
@@ -1891,14 +1892,14 @@
           .value.trim();
 
         if (!timestampInput) {
-          showMessage("generalMessage", "Please enter a timestamp", "error");
+          showMessage("moviesMessage", "Please enter a timestamp", "error");
           return;
         }
 
         const timestamp = parseTimestamp(timestampInput);
         if (!timestamp) {
           showMessage(
-            "generalMessage",
+            "moviesMessage",
             "Invalid timestamp format. Use HH:MM:SS or MM:SS",
             "error"
           );
@@ -1907,7 +1908,7 @@
 
         if (timestamp === "00:00:00") {
           showMessage(
-            "generalMessage",
+            "moviesMessage",
             "Timestamp must be greater than 00:00:00",
             "error"
           );
@@ -1925,7 +1926,7 @@
 
         try {
           showMessage(
-            "generalMessage",
+            "moviesMessage",
             "Splitting episode... This may take a few minutes.",
             "success"
           );
@@ -1947,23 +1948,23 @@
 
           if (!response.ok) {
             // Handle HTTP error responses (400, 500, etc.)
-            showMessage("generalMessage", result.error || "Failed to split episode", "error");
+            showMessage("moviesMessage", result.error || "Failed to split episode", "error");
             return;
           }
 
           if (result.success) {
             showMessage(
-              "generalMessage",
+              "moviesMessage",
               "Episode split successfully!",
               "success"
             );
             closeEditMenu();
             loadMovies();
           } else {
-            showMessage("generalMessage", "Error: " + result.error, "error");
+            showMessage("moviesMessage", "Error: " + result.error, "error");
           }
         } catch (error) {
-          showMessage("generalMessage", "Error: " + error.message, "error");
+          showMessage("moviesMessage", "Error: " + error.message, "error");
         }
       }
 
