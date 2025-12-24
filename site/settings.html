@@ -1944,6 +1944,13 @@
           }
 
           const result = await response.json();
+
+          if (!response.ok) {
+            // Handle HTTP error responses (400, 500, etc.)
+            showMessage("generalMessage", result.error || "Failed to split episode", "error");
+            return;
+          }
+
           if (result.success) {
             showMessage(
               "generalMessage",
