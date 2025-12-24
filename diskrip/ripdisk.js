@@ -851,7 +851,33 @@ async function ripDisc() {
       return;
     }
 
-    const titlesToRip = Math.min(config.titlesToRip || 1, discInfo.titleCount);
+    // Smart episode detection for TV series (only if enabled in config)
+    let titlesToRip;
+
+    if (config.autoDetectEpisodes) {
+      // When auto-detect is enabled, ignore titlesToRip completely
+      // Auto-detect episodes: look for titles with similar durations (within 20% of each other)
+      const durations = discInfo.titlesSortedByDuration.map(t => t.duration);
+      const avgDuration = durations.reduce((a, b) => a + b, 0) / durations.length;
+      const similarDurations = durations.filter(d =>
+        Math.abs(d - avgDuration) / avgDuration < 0.20 // Within 20%
+      );
+
+      // If most titles have similar durations, they're likely all episodes
+      if (similarDurations.length >= discInfo.titleCount * 0.6) {
+        // Rip all detected episodes (with sanity check)
+        titlesToRip = Math.min(discInfo.titleCount, 12); // Max 12 episodes per disc
+        log(`Auto-detected ${discInfo.titleCount} episodes with similar durations`);
+        log(`Auto-detect enabled: ripping all ${titlesToRip} detected episodes`);
+      } else {
+        // Even if not all titles are similar, rip all valid titles when auto-detect is on
+        titlesToRip = Math.min(discInfo.titleCount, 12);
+        log(`Auto-detect enabled: ripping all ${titlesToRip} titles (varying durations, may include bonus content)`);
+      }
+    } else {
+      // Auto-detect disabled, use manual titlesToRip setting
+      titlesToRip = Math.min(config.titlesToRip || 1, discInfo.titleCount);
+    }
     log(
       `Disc detected: ${discInfo.name} (${discInfo.titleCount} valid titles, ripping ${titlesToRip})`
     );
@@ -910,6 +936,33 @@ async function ripDisc() {
     // Sort MKV files to ensure consistent ordering
     mkvFiles.sort();
 
+    // For multi-episode discs (TV series), check if we should continue numbering from existing files
+    let startingEpisodeNumber = 1;
+    if (mkvFiles.length > 1 && config.outputSubfolder) {
+      // Count existing files in the output folder that match the pattern
+      const movieBase = humanizeName(discInfo.name);
+      try {
+        if (fs.existsSync(finalOutputFolder)) {
+          const existingFiles = fs.readdirSync(finalOutputFolder)
+            .filter(f => f.startsWith(movieBase) && f.endsWith('.mp4'))
+            .filter(f => /Part \d+\.mp4$/.test(f)); // Match "Part XX.mp4" pattern
+
+          if (existingFiles.length > 0) {
+            // Extract episode numbers and find the highest
+            const episodeNumbers = existingFiles.map(f => {
+              const match = f.match(/Part (\d+)\.mp4$/);
+              return match ? parseInt(match[1]) : 0;
+            });
+            const maxEpisode = Math.max(...episodeNumbers);
+            startingEpisodeNumber = maxEpisode + 1;
+            log(`Found ${existingFiles.length} existing episodes, continuing from episode ${startingEpisodeNumber}`);
+          }
+        }
+      } catch (err) {
+        log(`Warning: Could not check for existing episodes: ${err.message}`);
+      }
+    }
+
     for (let i = 0; i < mkvFiles.length; i++) {
       const mkvFile = mkvFiles[i];
       const movieBase = humanizeName(discInfo.name);
@@ -919,9 +972,10 @@ async function ripDisc() {
         outputFilename = `${movieBase}.mp4`;
         displayName = movieBase;
       } else {
-        // If multiple titles, number them sequentially (Part 1, Part 2, etc.)
-        // Use zero-padded numbering if more than 9 titles
-        const partNumber = String(i + 1).padStart(mkvFiles.length > 9 ? 2 : 1, '0');
+        // If multiple titles, number them sequentially starting from startingEpisodeNumber
+        const episodeNumber = startingEpisodeNumber + i;
+        // Use zero-padded numbering based on total expected episodes (assume up to 99)
+        const partNumber = String(episodeNumber).padStart(2, '0');
         outputFilename = `${movieBase} - Part ${partNumber}.mp4`;
         displayName = `${movieBase} - Part ${partNumber}`;
       }

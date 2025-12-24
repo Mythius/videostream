@@ -662,12 +662,25 @@
           <button class="btn" onclick="saveGeneralSettings()">
             Save Settings
           </button>
-          <button class="btn btn-secondary" onclick="updateSoftware()" style="margin-left: 10px;">
+          <button
+            class="btn btn-secondary"
+            onclick="updateSoftware()"
+            style="margin-left: 10px"
+          >
             Update Software
           </button>
           <div class="message" id="generalMessage"></div>
           <div class="message" id="updateMessage"></div>
-          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.1); text-align: center; color: rgba(255, 255, 255, 0.5); font-size: 0.9em;">
+          <div
+            style="
+              margin-top: 30px;
+              padding-top: 20px;
+              border-top: 1px solid rgba(255, 255, 255, 0.1);
+              text-align: center;
+              color: rgba(255, 255, 255, 0.5);
+              font-size: 0.9em;
+            "
+          >
             <div id="versionInfo">Loading version...</div>
           </div>
         </div>
@@ -676,9 +689,19 @@
       <!-- Movies Tab -->
       <div id="movies-tab" class="tab-content">
         <div class="section">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin: 0;">Manage Movies</h2>
-            <div id="movieCount" style="color: rgba(255, 255, 255, 0.7); font-size: 1em;">
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 20px;
+            "
+          >
+            <h2 style="margin: 0">Manage Movies</h2>
+            <div
+              id="movieCount"
+              style="color: rgba(255, 255, 255, 0.7); font-size: 1em"
+            >
               Loading...
             </div>
           </div>
@@ -732,6 +755,24 @@
             >
               How many titles to rip from each disc (sorted by length, longest
               first). Most movies have 1 main title.
+            </small>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="autoDetectEpisodes" />
+              <span>Auto-detect TV episodes</span>
+            </label>
+            <small
+              style="
+                display: block;
+                color: rgba(255, 255, 255, 0.5);
+                margin-top: 5px;
+              "
+            >
+              Automatically rip all episodes on a disc (up to 12) by analyzing
+              title durations. Completely ignores "Titles to Rip" when enabled.
+              Perfect for TV series!
             </small>
           </div>
 
@@ -1115,8 +1156,12 @@
         const movieCountEl = document.getElementById("movieCount");
 
         // Count movies and folders separately
-        const movieCount = movies.filter(item => item.type === "movie").length;
-        const folderCount = movies.filter(item => item.type === "folder").length;
+        const movieCount = movies.filter(
+          (item) => item.type === "movie"
+        ).length;
+        const folderCount = movies.filter(
+          (item) => item.type === "folder"
+        ).length;
 
         // Update count display
         if (movies.length === 0) {
@@ -1124,10 +1169,14 @@
         } else {
           const parts = [];
           if (movieCount > 0) {
-            parts.push(`${movieCount} ${movieCount === 1 ? "movie" : "movies"}`);
+            parts.push(
+              `${movieCount} ${movieCount === 1 ? "movie" : "movies"}`
+            );
           }
           if (folderCount > 0) {
-            parts.push(`${folderCount} ${folderCount === 1 ? "folder" : "folders"}`);
+            parts.push(
+              `${folderCount} ${folderCount === 1 ? "folder" : "folders"}`
+            );
           }
           movieCountEl.textContent = parts.join(", ");
         }
@@ -1629,7 +1678,9 @@
             </div>
             <div class="form-group" style="margin-bottom: 15px;">
               <label for="newMovieName">New Name</label>
-              <input type="text" id="newMovieName" value="${escapeHtml(oldName)}" style="width: 100%; padding: 12px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; color: white; font-size: 1em;">
+              <input type="text" id="newMovieName" value="${escapeHtml(
+                oldName
+              )}" style="width: 100%; padding: 12px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; color: white; font-size: 1em;">
             </div>
             <div class="form-group" style="margin-bottom: 15px;">
               <label class="checkbox-label">
@@ -1641,7 +1692,10 @@
               </small>
             </div>
             <div style="display: flex; gap: 10px;">
-              <button class="btn" style="flex: 1;" onclick="submitRename('${oldName.replace(/'/g, "\\'")}')">Save</button>
+              <button class="btn" style="flex: 1;" onclick="submitRename('${oldName.replace(
+                /'/g,
+                "\\'"
+              )}')">Save</button>
               <button class="btn btn-secondary" style="flex: 1;" onclick="closeEditMenu()">Cancel</button>
             </div>
           </div>
@@ -1649,8 +1703,9 @@
       }
 
       async function submitRename(oldName) {
-        const newName = document.getElementById('newMovieName').value.trim();
-        const searchNewThumbnail = document.getElementById('searchNewThumbnail').checked;
+        const newName = document.getElementById("newMovieName").value.trim();
+        const searchNewThumbnail =
+          document.getElementById("searchNewThumbnail").checked;
 
         if (!newName) {
           showMessage("generalMessage", "Movie name cannot be empty", "error");
@@ -1684,7 +1739,8 @@
           if (result.success) {
             let message = "";
             if (nameChanged && searchNewThumbnail) {
-              message = "Movie renamed successfully! Searching for new thumbnail...";
+              message =
+                "Movie renamed successfully! Searching for new thumbnail...";
             } else if (nameChanged) {
               message = "Movie renamed successfully!";
             } else if (searchNewThumbnail) {
@@ -1698,11 +1754,7 @@
             showMessage("generalMessage", "Error: " + result.error, "error");
           }
         } catch (error) {
-          showMessage(
-            "generalMessage",
-            "Error: " + error.message,
-            "error"
-          );
+          showMessage("generalMessage", "Error: " + error.message, "error");
         }
       }
 
@@ -1836,11 +1888,19 @@
       }
 
       async function updateSoftware() {
-        if (!confirm("This will update the software by running 'git pull' and restarting the service. The service will be unavailable for a few seconds. Continue?")) {
+        if (
+          !confirm(
+            "This will update the software by running 'git pull' and restarting the service. The service will be unavailable for a few seconds. Continue?"
+          )
+        ) {
           return;
         }
 
-        showMessage("updateMessage", "Updating software... The service will restart shortly.", "success");
+        showMessage(
+          "updateMessage",
+          "Updating software... The service will restart shortly.",
+          "success"
+        );
 
         try {
           const response = await fetch("/api/update-software", {
@@ -1891,7 +1951,8 @@
           }
         } catch (error) {
           console.error("Error loading version:", error);
-          document.getElementById("versionInfo").textContent = "Version: Error loading";
+          document.getElementById("versionInfo").textContent =
+            "Version: Error loading";
         }
       }
 
@@ -1910,6 +1971,8 @@
             settings.titlesToRip || 1;
           document.getElementById("minTitleLength").value =
             settings.minTitleLength || 300;
+          document.getElementById("autoDetectEpisodes").checked =
+            settings.autoDetectEpisodes || false;
           document.getElementById("autoEject").checked =
             settings.autoEject !== undefined ? settings.autoEject : true;
           document.getElementById("notifyOnComplete").checked =
@@ -1932,6 +1995,8 @@
           minTitleLength: parseInt(
             document.getElementById("minTitleLength").value
           ),
+          autoDetectEpisodes:
+            document.getElementById("autoDetectEpisodes").checked,
           autoEject: document.getElementById("autoEject").checked,
           notifyOnComplete: document.getElementById("notifyOnComplete").checked,
           keepMKV: document.getElementById("keepMKV").checked,

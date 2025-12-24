@@ -36,6 +36,7 @@ let config = {
     tempFolder: "/tmp/ripdisk",
     diskDevice: "/dev/sr0",
     titlesToRip: 1,
+    autoDetectEpisodes: false, // Auto-detect TV episodes by analyzing title durations
     minTitleLength: 300,
     autoEject: true,
     notifyOnComplete: true,
