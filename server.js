@@ -1019,6 +1019,266 @@ app.post("/api/move-from-folder", requireAuth, express.json(), async (req, res) 
   }
 });
 
+// API: Rename episode in folder
+app.post("/api/rename-episode", requireAuth, express.json(), async (req, res) => {
+  const { folderName, oldName, newName } = req.body;
+
+  if (!folderName || !oldName || !newName) {
+    return res.status(400).json({ error: "Folder name, old name, and new name are required" });
+  }
+
+  try {
+    const videoDir = config.videoDirectory;
+    const folderPath = path.join(videoDir, folderName);
+
+    const oldVideoPath = path.join(folderPath, oldName + ".mp4");
+    const newVideoPath = path.join(folderPath, newName + ".mp4");
+
+    // Check if old video exists
+    if (!fs.existsSync(oldVideoPath)) {
+      return res.status(404).json({ error: "Episode not found" });
+    }
+
+    // Check if new name already exists
+    if (fs.existsSync(newVideoPath)) {
+      return res.status(400).json({ error: "An episode with this name already exists" });
+    }
+
+    // Rename video file
+    fs.renameSync(oldVideoPath, newVideoPath);
+    console.log(`Renamed episode: ${oldVideoPath} -> ${newVideoPath}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error renaming episode:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Delete episode from folder
+app.post("/api/delete-episode", requireAuth, express.json(), async (req, res) => {
+  const { folderName, movieName } = req.body;
+
+  if (!folderName || !movieName) {
+    return res.status(400).json({ error: "Folder name and movie name are required" });
+  }
+
+  try {
+    const videoDir = config.videoDirectory;
+    const videoPath = path.join(videoDir, folderName, movieName + ".mp4");
+
+    // Check if video exists
+    if (!fs.existsSync(videoPath)) {
+      return res.status(404).json({ error: "Episode not found" });
+    }
+
+    // Delete video file
+    fs.unlinkSync(videoPath);
+    console.log(`Deleted episode: ${videoPath}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting episode:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API: Split episode into 2 parts
+app.post("/api/split-episode", requireAuth, express.json(), async (req, res) => {
+  const { folderName, movieName, timestamp } = req.body;
+
+  if (!folderName || !movieName || !timestamp) {
+    return res.status(400).json({ error: "Folder name, movie name, and timestamp are required" });
+  }
+
+  // Validate timestamp format (HH:MM:SS)
+  const timestampMatch = timestamp.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+  if (!timestampMatch) {
+    return res.status(400).json({ error: "Invalid timestamp format. Use HH:MM:SS" });
+  }
+
+  try {
+    const videoDir = config.videoDirectory;
+    const folderPath = path.join(videoDir, folderName);
+    const sourcePath = path.join(folderPath, movieName + ".mp4");
+
+    // Check if source video exists
+    if (!fs.existsSync(sourcePath)) {
+      return res.status(404).json({ error: "Episode not found" });
+    }
+
+    // Get video duration using ffprobe
+    const getDuration = () => {
+      return new Promise((resolve, reject) => {
+        const ffprobe = spawn("ffprobe", [
+          "-v", "error",
+          "-show_entries", "format=duration",
+          "-of", "default=noprint_wrappers=1:nokey=1",
+          sourcePath
+        ]);
+
+        let output = "";
+        ffprobe.stdout.on("data", (data) => {
+          output += data.toString();
+        });
+
+        ffprobe.on("close", (code) => {
+          if (code === 0) {
+            const duration = parseFloat(output.trim());
+            resolve(duration);
+          } else {
+            reject(new Error("Failed to get video duration"));
+          }
+        });
+
+        ffprobe.on("error", (error) => {
+          reject(error);
+        });
+      });
+    };
+
+    // Convert timestamp to seconds
+    const hours = parseInt(timestampMatch[1]);
+    const minutes = parseInt(timestampMatch[2]);
+    const seconds = parseInt(timestampMatch[3]);
+    const splitTimeSeconds = hours * 3600 + minutes * 60 + seconds;
+
+    // Get video duration
+    const durationSeconds = await getDuration();
+
+    // Validate timestamp is within video duration
+    if (splitTimeSeconds >= durationSeconds) {
+      return res.status(400).json({
+        error: `Timestamp ${timestamp} is beyond the video duration (${Math.floor(durationSeconds / 60)}:${Math.floor(durationSeconds % 60).toString().padStart(2, '0')})`
+      });
+    }
+
+    if (splitTimeSeconds <= 0) {
+      return res.status(400).json({ error: "Timestamp must be greater than 00:00:00" });
+    }
+
+    // Extract base name and part number if it exists
+    // Example: "Episode 01" or "Episode 01 Part 1"
+    const partMatch = movieName.match(/^(.+?)(?: Part (\d+))?$/);
+    const baseName = partMatch ? partMatch[1] : movieName;
+
+    // Create temporary output paths
+    const part1Path = path.join(folderPath, `${baseName} Part 1.mp4`);
+    const part2Path = path.join(folderPath, `${baseName} Part 2.mp4`);
+
+    // Check if output files already exist
+    if (fs.existsSync(part1Path) || fs.existsSync(part2Path)) {
+      return res.status(400).json({ error: "Output files already exist. Please rename or delete them first." });
+    }
+
+    console.log(`Splitting episode: ${movieName} at ${timestamp}`);
+    console.log(`Creating Part 1: ${part1Path}`);
+    console.log(`Creating Part 2: ${part2Path}`);
+
+    // Split the video using ffmpeg
+    const splitVideo = () => {
+      return new Promise((resolve, reject) => {
+        // First part: from start to split time
+        const ffmpeg1 = spawn("ffmpeg", [
+          "-i", sourcePath,
+          "-t", timestamp,
+          "-c", "copy",
+          "-y",
+          part1Path
+        ]);
+
+        let errorOutput1 = "";
+        ffmpeg1.stderr.on("data", (data) => {
+          errorOutput1 += data.toString();
+        });
+
+        ffmpeg1.on("close", (code1) => {
+          if (code1 !== 0) {
+            console.error("ffmpeg Part 1 error:", errorOutput1);
+            reject(new Error(`Failed to create Part 1: ${errorOutput1}`));
+            return;
+          }
+
+          console.log("Part 1 created successfully");
+
+          // Second part: from split time to end
+          const ffmpeg2 = spawn("ffmpeg", [
+            "-i", sourcePath,
+            "-ss", timestamp,
+            "-c", "copy",
+            "-y",
+            part2Path
+          ]);
+
+          let errorOutput2 = "";
+          ffmpeg2.stderr.on("data", (data) => {
+            errorOutput2 += data.toString();
+          });
+
+          ffmpeg2.on("close", (code2) => {
+            if (code2 !== 0) {
+              console.error("ffmpeg Part 2 error:", errorOutput2);
+              // Clean up Part 1 if Part 2 fails
+              if (fs.existsSync(part1Path)) {
+                fs.unlinkSync(part1Path);
+              }
+              reject(new Error(`Failed to create Part 2: ${errorOutput2}`));
+              return;
+            }
+
+            console.log("Part 2 created successfully");
+            resolve();
+          });
+
+          ffmpeg2.on("error", (error) => {
+            // Clean up Part 1 if Part 2 fails
+            if (fs.existsSync(part1Path)) {
+              fs.unlinkSync(part1Path);
+            }
+            reject(error);
+          });
+        });
+
+        ffmpeg1.on("error", (error) => {
+          reject(error);
+        });
+      });
+    };
+
+    await splitVideo();
+
+    // Delete the original file
+    fs.unlinkSync(sourcePath);
+    console.log(`Deleted original episode: ${sourcePath}`);
+
+    // Copy thumbnail for both parts if it exists
+    const imgsDir = path.join(mainfolder, "site", "imgs");
+    const originalThumbnail = path.join(imgsDir, movieName + ".png");
+
+    if (fs.existsSync(originalThumbnail)) {
+      const part1Thumbnail = path.join(imgsDir, `${baseName} Part 1.png`);
+      const part2Thumbnail = path.join(imgsDir, `${baseName} Part 2.png`);
+
+      fs.copyFileSync(originalThumbnail, part1Thumbnail);
+      fs.copyFileSync(originalThumbnail, part2Thumbnail);
+
+      // Delete original thumbnail
+      fs.unlinkSync(originalThumbnail);
+
+      console.log("Thumbnails copied for both parts");
+    }
+
+    res.json({
+      success: true,
+      part1: `${baseName} Part 1`,
+      part2: `${baseName} Part 2`
+    });
+  } catch (error) {
+    console.error("Error splitting episode:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API: Get folder contents
 app.get("/api/folder-contents/:folderName", requireAuth, (req, res) => {
   try {

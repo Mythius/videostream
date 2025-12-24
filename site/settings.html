@@ -576,6 +576,10 @@
         font-size: 20px;
         padding: 5px;
       }
+      .two-columns {
+        display: grid;
+        grid-template-columns: 50% 50%;
+      }
     </style>
   </head>
   <body>
@@ -659,16 +663,19 @@
               <span>Require password to access server</span>
             </label>
           </div>
-          <button class="btn" onclick="saveGeneralSettings()">
-            Save Settings
-          </button>
-          <button
-            class="btn btn-secondary"
-            onclick="updateSoftware()"
-            style="margin-left: 10px"
-          >
-            Update Software
-          </button>
+          <div class="two-columns">
+            <button class="btn" onclick="saveGeneralSettings()">
+              Save Settings
+            </button>
+            <button
+              class="btn btn-secondary"
+              onclick="updateSoftware()"
+              style="margin-left: 10px"
+            >
+              Update Software
+            </button>
+          </div>
+
           <div class="message" id="generalMessage"></div>
           <div class="message" id="updateMessage"></div>
           <div
@@ -1490,13 +1497,13 @@
                   <span style="font-size: 0.9em;">${escapeHtml(
                     movie.title
                   )}</span>
-                  <button class="btn small-btn" style="padding: 5px 10px; font-size: 0.8em;" onclick="moveFromFolder('${folderTitle.replace(
+                  <button class="btn small-btn" style="padding: 5px 10px; font-size: 0.8em;" onclick="showEpisodeMenu('${folderTitle.replace(
                     /'/g,
                     "\\'"
                   )}', '${escapeHtml(movie.title).replace(
                     /'/g,
                     "\\'"
-                  )}')">Move Out</button>
+                  )}')">⋮</button>
                 </div>
               `
                 )
@@ -1623,6 +1630,46 @@
         }
       }
 
+      function showEpisodeMenu(folderName, movieName) {
+        const popup = document.getElementById("editMenuPopup");
+        const overlay = document.getElementById("popupOverlay");
+        const content = document.getElementById("editMenuContent");
+
+        content.innerHTML = `
+          <div class="popup-option" onclick="moveFromFolder('${folderName.replace(
+            /'/g,
+            "\\'"
+          )}', '${movieName.replace(/'/g, "\\'")}')">
+            <div class="popup-option-title">📤 Move Out</div>
+            <div class="popup-option-desc">Move this episode out of the folder to the main library</div>
+          </div>
+          <div class="popup-option" onclick="showRenameEpisodeDialog('${folderName.replace(
+            /'/g,
+            "\\'"
+          )}', '${movieName.replace(/'/g, "\\'")}')">
+            <div class="popup-option-title">✏️ Rename Episode</div>
+            <div class="popup-option-desc">Change the name of this episode</div>
+          </div>
+          <div class="popup-option" onclick="deleteEpisode('${folderName.replace(
+            /'/g,
+            "\\'"
+          )}', '${movieName.replace(/'/g, "\\'")}')">
+            <div class="popup-option-title">🗑️ Delete Episode</div>
+            <div class="popup-option-desc">Permanently delete this episode</div>
+          </div>
+          <div class="popup-option" onclick="showSplitEpisodeDialog('${folderName.replace(
+            /'/g,
+            "\\'"
+          )}', '${movieName.replace(/'/g, "\\'")}')">
+            <div class="popup-option-title">✂️ Split into 2 Episodes</div>
+            <div class="popup-option-desc">Split this episode at a specific timestamp</div>
+          </div>
+        `;
+
+        popup.classList.add("active");
+        overlay.classList.add("active");
+      }
+
       async function moveFromFolder(folderName, movieName) {
         if (
           !confirm(
@@ -1664,6 +1711,252 @@
             "Error moving movie: " + error.message,
             "error"
           );
+        }
+      }
+
+      function showRenameEpisodeDialog(folderName, oldName) {
+        const popup = document.getElementById("editMenuPopup");
+        const content = document.getElementById("editMenuContent");
+
+        content.innerHTML = `
+          <div style="margin-bottom: 20px;">
+            <div style="font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">
+              Rename Episode
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+              <label for="newEpisodeName">New Name</label>
+              <input type="text" id="newEpisodeName" value="${escapeHtml(
+                oldName
+              )}" style="width: 100%; padding: 12px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; color: white; font-size: 1em;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button class="btn" style="flex: 1;" onclick="submitRenameEpisode('${folderName.replace(
+                /'/g,
+                "\\'"
+              )}', '${oldName.replace(/'/g, "\\'")}')">Save</button>
+              <button class="btn btn-secondary" style="flex: 1;" onclick="closeEditMenu()">Cancel</button>
+            </div>
+          </div>
+        `;
+      }
+
+      async function submitRenameEpisode(folderName, oldName) {
+        const newName = document.getElementById("newEpisodeName").value.trim();
+
+        if (!newName) {
+          showMessage(
+            "generalMessage",
+            "Episode name cannot be empty",
+            "error"
+          );
+          return;
+        }
+
+        if (newName === oldName) {
+          closeEditMenu();
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/rename-episode", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folderName, oldName, newName }),
+          });
+
+          if (response.status === 401) {
+            window.location.href =
+              "/login?next=" + encodeURIComponent("/settings.html");
+            return;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            showMessage(
+              "generalMessage",
+              "Episode renamed successfully!",
+              "success"
+            );
+            closeEditMenu();
+            loadMovies();
+          } else {
+            showMessage("generalMessage", "Error: " + result.error, "error");
+          }
+        } catch (error) {
+          showMessage("generalMessage", "Error: " + error.message, "error");
+        }
+      }
+
+      async function deleteEpisode(folderName, movieName) {
+        if (
+          !confirm(
+            `Are you sure you want to permanently delete "${movieName}"?`
+          )
+        ) {
+          return;
+        }
+
+        try {
+          const response = await fetch("/api/delete-episode", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folderName, movieName }),
+          });
+
+          if (response.status === 401) {
+            window.location.href =
+              "/login?next=" + encodeURIComponent("/settings.html");
+            return;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            showMessage(
+              "generalMessage",
+              "Episode deleted successfully!",
+              "success"
+            );
+            closeEditMenu();
+            loadMovies();
+          } else {
+            showMessage("generalMessage", "Error: " + result.error, "error");
+          }
+        } catch (error) {
+          showMessage("generalMessage", "Error: " + error.message, "error");
+        }
+      }
+
+      function showSplitEpisodeDialog(folderName, movieName) {
+        const popup = document.getElementById("editMenuPopup");
+        const content = document.getElementById("editMenuContent");
+
+        content.innerHTML = `
+          <div style="margin-bottom: 20px;">
+            <div style="font-weight: 600; margin-bottom: 10px; color: rgba(255, 255, 255, 0.9);">
+              Split Episode into 2 Parts
+            </div>
+            <div style="margin-bottom: 15px; color: rgba(255, 255, 255, 0.7); font-size: 0.9em;">
+              Episode: ${escapeHtml(movieName)}
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+              <label for="splitTimestamp">Split at timestamp (HH:MM:SS or MM:SS)</label>
+              <input type="text" id="splitTimestamp" placeholder="00:45:30" style="width: 100%; padding: 12px; background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.2); border-radius: 8px; color: white; font-size: 1em;">
+              <small style="color: rgba(255, 255, 255, 0.6); display: block; margin-top: 5px;">
+                Examples: "45:30" (45 min 30 sec), "01:15:00" (1 hour 15 min)
+              </small>
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button class="btn" style="flex: 1;" onclick="submitSplitEpisode('${folderName.replace(
+                /'/g,
+                "\\'"
+              )}', '${movieName.replace(/'/g, "\\'")}')">Split Episode</button>
+              <button class="btn btn-secondary" style="flex: 1;" onclick="closeEditMenu()">Cancel</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function parseTimestamp(timestamp) {
+        // Remove whitespace
+        timestamp = timestamp.trim();
+
+        // Match HH:MM:SS or MM:SS format
+        const match = timestamp.match(/^(?:(\d{1,2}):)?(\d{1,2}):(\d{1,2})$/);
+
+        if (!match) {
+          return null;
+        }
+
+        const hours = match[1] ? parseInt(match[1]) : 0;
+        const minutes = parseInt(match[2]);
+        const seconds = parseInt(match[3]);
+
+        // Validate ranges
+        if (minutes >= 60 || seconds >= 60) {
+          return null;
+        }
+
+        // Return in HH:MM:SS format
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+          2,
+          "0"
+        )}:${String(seconds).padStart(2, "0")}`;
+      }
+
+      async function submitSplitEpisode(folderName, movieName) {
+        const timestampInput = document
+          .getElementById("splitTimestamp")
+          .value.trim();
+
+        if (!timestampInput) {
+          showMessage("generalMessage", "Please enter a timestamp", "error");
+          return;
+        }
+
+        const timestamp = parseTimestamp(timestampInput);
+        if (!timestamp) {
+          showMessage(
+            "generalMessage",
+            "Invalid timestamp format. Use HH:MM:SS or MM:SS",
+            "error"
+          );
+          return;
+        }
+
+        if (timestamp === "00:00:00") {
+          showMessage(
+            "generalMessage",
+            "Timestamp must be greater than 00:00:00",
+            "error"
+          );
+          return;
+        }
+
+        // Show confirmation
+        if (
+          !confirm(
+            `Split "${movieName}" at ${timestamp}?\n\nThis will create two new episodes and delete the original.`
+          )
+        ) {
+          return;
+        }
+
+        try {
+          showMessage(
+            "generalMessage",
+            "Splitting episode... This may take a few minutes.",
+            "success"
+          );
+
+          const response = await fetch("/api/split-episode", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ folderName, movieName, timestamp }),
+          });
+
+          if (response.status === 401) {
+            window.location.href =
+              "/login?next=" + encodeURIComponent("/settings.html");
+            return;
+          }
+
+          const result = await response.json();
+          if (result.success) {
+            showMessage(
+              "generalMessage",
+              "Episode split successfully!",
+              "success"
+            );
+            closeEditMenu();
+            loadMovies();
+          } else {
+            showMessage("generalMessage", "Error: " + result.error, "error");
+          }
+        } catch (error) {
+          showMessage("generalMessage", "Error: " + error.message, "error");
         }
       }
 
