@@ -1562,6 +1562,7 @@ app.get("/api/ripper-settings", requireAuth, (req, res) => {
   res.json({
     titlesToRip: config.diskrip.titlesToRip,
     minTitleLength: config.diskrip.minTitleLength,
+    autoDetectEpisodes: config.diskrip.autoDetectEpisodes || false,
     autoEject: config.diskrip.autoEject,
     notifyOnComplete: config.diskrip.notifyOnComplete,
     keepMKV: config.diskrip.keepMKV,
@@ -1574,6 +1575,7 @@ app.post("/api/ripper-settings", requireAuth, express.json(), (req, res) => {
   const {
     titlesToRip,
     minTitleLength,
+    autoDetectEpisodes,
     autoEject,
     notifyOnComplete,
     keepMKV,
@@ -1584,6 +1586,8 @@ app.post("/api/ripper-settings", requireAuth, express.json(), (req, res) => {
     if (titlesToRip !== undefined) config.diskrip.titlesToRip = titlesToRip;
     if (minTitleLength !== undefined)
       config.diskrip.minTitleLength = minTitleLength;
+    if (autoDetectEpisodes !== undefined)
+      config.diskrip.autoDetectEpisodes = autoDetectEpisodes;
     if (autoEject !== undefined) config.diskrip.autoEject = autoEject;
     if (notifyOnComplete !== undefined)
       config.diskrip.notifyOnComplete = notifyOnComplete;
