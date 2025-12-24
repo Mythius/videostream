@@ -236,16 +236,18 @@ async function getDiscInfo() {
       });
     }
 
-    // Sort by duration (longest first)
-    titles.sort((a, b) => b.duration - a.duration);
-
-    // Filter by minimum length
+    // Filter by minimum length first
     const minLength = config.minTitleLength || 300;
     const validTitles = titles.filter((t) => t.duration >= minLength);
 
+    // Sort by duration (longest first) to identify which titles to rip
+    // but we'll restore the natural order after selection
+    const sortedByDuration = [...validTitles].sort((a, b) => b.duration - a.duration);
+
     return {
       name: sanitizeFilename(discName),
-      titles: validTitles,
+      titles: validTitles, // Keep natural title order
+      titlesSortedByDuration: sortedByDuration, // Also provide sorted version for selection
       titleCount: validTitles.length,
     };
   } catch (error) {
@@ -382,9 +384,12 @@ async function ripToMKV(discInfo) {
   log("✓ Directory is writable");
 
   return new Promise((resolve, reject) => {
-    // Determine which titles to rip
+    // Determine which titles to rip - select the N longest titles
     const titlesToRip = config.titlesToRip || 1;
-    const selectedTitles = discInfo.titles.slice(0, titlesToRip);
+    const longestTitles = discInfo.titlesSortedByDuration.slice(0, titlesToRip);
+
+    // Re-sort selected titles by their original title index to preserve disc order
+    const selectedTitles = longestTitles.sort((a, b) => a.index - b.index);
 
     log(`Ripping disc "${discInfo.name}" to MKV...`);
     log(
