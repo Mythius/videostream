@@ -83,21 +83,32 @@ echo "✓ Directories created with proper permissions"
 echo ""
 echo "Detecting Node.js installation..."
 
+# Get the actual user who invoked sudo (not root)
+ACTUAL_USER="${SUDO_USER:-$USER}"
+ACTUAL_HOME=$(eval echo ~$ACTUAL_USER)
+
+echo "Running as sudo, detecting node for user: $ACTUAL_USER"
+
 # Try to find node binary in this order:
-# 1. User's current node (which node)
+# 1. User's which node (running as the actual user)
 # 2. NVM default installation
 # 3. Standard system paths
 NODE_PATH=""
 
-if command -v node &>/dev/null; then
-    NODE_PATH=$(which node)
+# Run 'which node' as the actual user
+NODE_PATH=$(sudo -u "$ACTUAL_USER" bash -c 'which node 2>/dev/null' || echo "")
+
+if [ -n "$NODE_PATH" ]; then
     echo "✓ Found Node.js at: $NODE_PATH"
-elif [ -f "$HOME/.nvm/nvm.sh" ]; then
-    # Source nvm and get the default node path
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-    if command -v node &>/dev/null; then
-        NODE_PATH=$(which node)
+elif [ -f "$ACTUAL_HOME/.nvm/nvm.sh" ]; then
+    # Source nvm as the actual user and get the node path
+    NODE_PATH=$(sudo -u "$ACTUAL_USER" bash -c "
+        export NVM_DIR=\"$ACTUAL_HOME/.nvm\"
+        [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\"
+        which node 2>/dev/null
+    " || echo "")
+
+    if [ -n "$NODE_PATH" ]; then
         echo "✓ Found Node.js via NVM at: $NODE_PATH"
     fi
 fi
@@ -169,6 +180,9 @@ if [ -f "package.json" ]; then
 else
     npm install node-notifier
 fi
+
+sudo systemctl enable ripdisk.service
+sudo systemctl start ripdisk.service
 
 echo ""
 echo "=== Installation Complete ==="
