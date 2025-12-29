@@ -174,13 +174,6 @@ echo ""
 echo "Installing npm dependencies..."
 cd "$SCRIPT_DIR"
 
-# Install npm packages (idempotent - won't reinstall if already present)
-if [ -f "package.json" ]; then
-    npm install
-else
-    npm install node-notifier
-fi
-
 sudo systemctl enable ripdisk.service
 sudo systemctl start ripdisk.service
 
