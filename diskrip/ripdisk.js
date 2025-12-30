@@ -1024,7 +1024,7 @@ async function ripDisc() {
 
     // Clean up temp folder (only remove per-disc subfolder, not the shared tempFolder)
     if (createdSubfolder && fs.existsSync(outputPath)) {
-      fs.rmdirSync(outputPath, { recursive: true });
+      fs.rmSync(outputPath, { recursive: true, force: true });
     }
 
     log(`=== Ripping and conversion completed! ===`);
@@ -1132,6 +1132,7 @@ async function checkForDisc() {
     // Only log and rip when a disc is newly detected (state change)
     if (discPresent && discStateChanged) {
       log("Disc detected in drive!");
+      sendNotification("info","Disc Detected", "A new disc has been detected in the drive.");
       // Reload config to pick up any changes made in settings
       reloadConfig();
       await ripDisc();
