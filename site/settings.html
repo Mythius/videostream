@@ -665,6 +665,21 @@
               <span>Require password to access server</span>
             </label>
           </div>
+
+          <div class="form-group" style="margin-top: 30px;">
+            <label>Storage Usage</label>
+            <div id="storageInfo" style="margin-top: 10px;">
+              <div style="color: rgba(255, 255, 255, 0.6); font-size: 0.9em; margin-bottom: 8px;" id="storageText">
+                Loading storage information...
+              </div>
+              <div style="width: 100%; height: 24px; background: rgba(0, 0, 0, 0.3); border-radius: 12px; overflow: hidden; position: relative;">
+                <div id="storageBar" style="height: 100%; background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); width: 0%; transition: width 0.5s ease, background 0.3s ease; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.85em;">
+                  0%
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="two-columns">
             <button class="btn" onclick="saveGeneralSettings()">
               Save Settings
@@ -2144,8 +2159,47 @@
           document.getElementById("password").value = settings.password || "";
           document.getElementById("passwordRequired").checked =
             settings.passwordRequired || false;
+
+          // Load storage information
+          loadStorageInfo();
         } catch (error) {
           console.error("Error loading settings:", error);
+        }
+      }
+
+      async function loadStorageInfo() {
+        try {
+          const response = await fetch("/api/storage", {
+            credentials: "include",
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to fetch storage info");
+          }
+
+          const storage = await response.json();
+          const storageText = document.getElementById("storageText");
+          const storageBar = document.getElementById("storageBar");
+
+          // Update text
+          storageText.textContent = `${storage.usedFormatted} used of ${storage.totalFormatted} (${storage.freeFormatted} free). Note each movie is about 1-2 GB in size.`;
+
+          // Update progress bar
+          const percentage = storage.usagePercentage;
+          storageBar.style.width = `${Math.min(percentage, 100)}%`;
+          storageBar.textContent = `${percentage}%`;
+
+          // Update color based on usage
+          if (percentage > 90) {
+            storageBar.style.background = 'linear-gradient(90deg, #ff6b6b 0%, #ee5a6f 100%)';
+          } else if (percentage > 75) {
+            storageBar.style.background = 'linear-gradient(90deg, #ffa500 0%, #ff8c00 100%)';
+          } else {
+            storageBar.style.background = 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)';
+          }
+        } catch (error) {
+          console.error("Error loading storage info:", error);
+          document.getElementById("storageText").textContent = "Unable to load storage information";
         }
       }
 

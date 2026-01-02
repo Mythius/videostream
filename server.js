@@ -1645,6 +1645,86 @@ app.get("/api/detect-ip", requireAuth, (req, res) => {
   }
 });
 
+// API: Get storage/disk usage information
+app.get("/api/storage", requireAuth, (req, res) => {
+  try {
+    const platform = os.platform();
+    let totalSpace = 0;
+    let usedSpace = 0;
+
+    if (platform === 'darwin' || platform === 'linux') {
+      // macOS or Linux - use df command
+      const { execSync } = require('child_process');
+      const output = execSync('df -k', { encoding: 'utf-8' });
+      const lines = output.split('\n');
+
+      // Skip header line
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const parts = line.split(/\s+/);
+        // Only count main filesystem mounts (skip devfs, tmpfs, etc.)
+        if (parts[0].startsWith('/dev/disk') || parts[0].startsWith('/dev/sd') || parts[0].startsWith('/dev/hd')) {
+          const size = parseInt(parts[1]) * 1024; // Convert KB to bytes
+          const used = parseInt(parts[2]) * 1024;
+
+          if (!isNaN(size) && !isNaN(used)) {
+            totalSpace += size;
+            usedSpace += used;
+          }
+        }
+      }
+    } else if (platform === 'win32') {
+      // Windows - use wmic command
+      const { execSync } = require('child_process');
+      const output = execSync('wmic logicaldisk get size,freespace', { encoding: 'utf-8' });
+      const lines = output.split('\n');
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const parts = line.split(/\s+/);
+        if (parts.length >= 2) {
+          const freeSpace = parseInt(parts[0]);
+          const size = parseInt(parts[1]);
+
+          if (!isNaN(size) && !isNaN(freeSpace) && size > 0) {
+            totalSpace += size;
+            usedSpace += (size - freeSpace);
+          }
+        }
+      }
+    }
+
+    const freeSpace = totalSpace - usedSpace;
+    const usagePercentage = totalSpace > 0 ? ((usedSpace / totalSpace) * 100).toFixed(1) : 0;
+
+    // Format bytes to human-readable format
+    const formatBytes = (bytes) => {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    res.json({
+      total: totalSpace,
+      used: usedSpace,
+      free: freeSpace,
+      usagePercentage: parseFloat(usagePercentage),
+      totalFormatted: formatBytes(totalSpace),
+      usedFormatted: formatBytes(usedSpace),
+      freeFormatted: formatBytes(freeSpace)
+    });
+  } catch (error) {
+    console.error("Error getting storage info:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API: Scan for Roku devices on the network
 app.get("/api/roku/scan", requireAuth, async (req, res) => {
   try {
