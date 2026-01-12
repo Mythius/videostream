@@ -487,7 +487,55 @@ async function ripToMKV(discInfo) {
 
     const makemkv = spawn(makemkvconCmd, [], spawnOptions);
 
+    // Add timeout for ripping process (4 hours max - some discs take a long time)
+    const RIP_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
+    let ripTimeout = setTimeout(() => {
+      log(`ERROR: MakeMKV ripping process timed out after ${RIP_TIMEOUT_MS / 1000 / 60} minutes`);
+      makemkv.kill('SIGTERM');
+
+      // Give it 10 seconds to cleanup, then force kill
+      setTimeout(() => {
+        if (!makemkv.killed) {
+          log("Force killing MakeMKV process with SIGKILL");
+          makemkv.kill('SIGKILL');
+        }
+      }, 10000);
+
+      reject(new Error(`MakeMKV ripping timed out after ${RIP_TIMEOUT_MS / 1000 / 60} minutes`));
+    }, RIP_TIMEOUT_MS);
+
+    // Add stall detector - kills process if no output for 10 minutes
+    const STALL_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+    let stallCheckInterval = setInterval(() => {
+      const timeSinceLastProgress = Date.now() - lastProgressTime;
+      if (timeSinceLastProgress > STALL_TIMEOUT_MS) {
+        log(`ERROR: MakeMKV appears to be stalled - no output for ${timeSinceLastProgress / 1000 / 60} minutes`);
+        log("This usually indicates the disc is unreadable or the drive is having issues");
+        clearInterval(stallCheckInterval);
+        clearTimeout(ripTimeout);
+        makemkv.kill('SIGTERM');
+
+        // Give it 10 seconds to cleanup, then force kill
+        setTimeout(() => {
+          if (!makemkv.killed) {
+            log("Force killing stalled MakeMKV process with SIGKILL");
+            makemkv.kill('SIGKILL');
+          }
+        }, 10000);
+
+        sendNotification(
+          "error",
+          "MakeMKV Stalled",
+          "MakeMKV has stalled with no progress. The disc may be unreadable."
+        );
+
+        reject(new Error(`MakeMKV stalled - no output for ${timeSinceLastProgress / 1000 / 60} minutes`));
+      }
+    }, 60000); // Check every minute
+
     makemkv.on("error", (err) => {
+      clearTimeout(ripTimeout);
+      clearInterval(stallCheckInterval);
       log("Failed to start makemkvcon: " + (err.message || err));
       reject(err);
     });
@@ -495,10 +543,14 @@ async function ripToMKV(discInfo) {
     let output = "";
     let errorOutput = "";
     let hasReadErrors = false;
+    let lastProgressTime = Date.now();
 
     makemkv.stdout.on("data", (data) => {
       const text = data.toString();
       output += text;
+
+      // Update activity timestamp
+      lastProgressTime = Date.now();
 
       // Log progress
       const progressMatch = text.match(/PRGV:(\d+),(\d+),(\d+)/);
@@ -545,6 +597,9 @@ async function ripToMKV(discInfo) {
     });
 
     makemkv.on("close", (code) => {
+      clearTimeout(ripTimeout);
+      clearInterval(stallCheckInterval);
+
       if (code === 0) {
         log("MKV ripping completed successfully");
 
