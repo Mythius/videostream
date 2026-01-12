@@ -107,17 +107,28 @@ function sendNotification(type, title, message) {
   }
 }
 /**
- * Execute command and return promise
+ * Execute command and return promise with optional timeout
  */
-function execPromise(command) {
+function execPromise(command, timeoutMs = 0) {
   return new Promise((resolve, reject) => {
-    exec(command, (error, stdout, stderr) => {
+    const child = exec(command, (error, stdout, stderr) => {
       if (error) {
         reject({ error, stderr });
       } else {
         resolve(stdout);
       }
     });
+
+    // Add timeout if specified
+    if (timeoutMs > 0) {
+      const timer = setTimeout(() => {
+        child.kill('SIGTERM');
+        reject(new Error(`Command timed out after ${timeoutMs}ms: ${command}`));
+      }, timeoutMs);
+
+      // Clear timeout if command completes
+      child.on('exit', () => clearTimeout(timer));
+    }
   });
 }
 
@@ -211,7 +222,8 @@ async function isDiscPresent() {
 async function getDiscInfo() {
   try {
     log("Scanning disc with MakeMKV...");
-    const output = await execPromise(`makemkvcon -r info disc:0`);
+    // Use 120 second timeout for disc scanning (some discs take a while)
+    const output = await execPromise(`makemkvcon -r info disc:0`, 120000);
 
     // Extract disc name from output
     const nameMatch = output.match(/CINFO:2,0,"([^"]+)"/);
@@ -251,7 +263,19 @@ async function getDiscInfo() {
       titleCount: validTitles.length,
     };
   } catch (error) {
-    log("Error getting disc info: " + (error.stderr || error.message));
+    const errorMsg = error.message || error.stderr || error.toString();
+    log("Error getting disc info: " + errorMsg);
+
+    // Check if it was a timeout
+    if (errorMsg.includes('timed out')) {
+      log("MakeMKV scan timed out - disc may be unreadable or drive may be busy");
+      sendNotification(
+        "error",
+        "Disc Scan Timeout",
+        "MakeMKV took too long to scan the disc. The disc may be unreadable or the drive may be busy."
+      );
+    }
+
     throw error;
   }
 }
@@ -1054,8 +1078,8 @@ async function ripDisc() {
     // Send detailed notification (compression errors already sent above, this catches others)
     // Check if error was already notified (compression errors send their own notification)
     const errorMsg = error.message || error.toString();
-    if (!errorMsg.includes("FFmpeg") && !errorMsg.includes("convert")) {
-      // This is likely a ripping error, not compression
+    if (!errorMsg.includes("FFmpeg") && !errorMsg.includes("convert") && !errorMsg.includes("timed out")) {
+      // This is likely a ripping error, not compression or timeout (timeout already notified)
       sendNotification(
         "error",
         "Ripping Failed",
@@ -1072,6 +1096,11 @@ async function ripDisc() {
         log(`Failed to eject disc after error: ${ejectError.message}`);
       }
     }
+
+    // Reset cooldown on error so we can try again with a different disc
+    log("Resetting cooldown due to error - ready to detect new discs");
+    lastRippedDisc = null;
+    lastRipTime = 0;
   } finally {
     isRipping = false;
   }
