@@ -223,7 +223,7 @@ async function getDiscInfo() {
   try {
     log("Scanning disc with MakeMKV...");
     // Use 120 second timeout for disc scanning (some discs take a while)
-    const output = await execPromise(`makemkvcon -r info disc:0`, 120000);
+    const output = await execPromise(`makemkvcon -r info disc:0`, 60 * 1000 * 4);
 
     // Extract disc name from output
     const nameMatch = output.match(/CINFO:2,0,"([^"]+)"/);
