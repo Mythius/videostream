@@ -224,8 +224,8 @@ async function getDiscInfo() {
   return new Promise((resolve, reject) => {
     log("Scanning disc with MakeMKV...");
 
-    const SCAN_TIMEOUT_MS = 4 * 60 * 1000; // 4 minutes max for scanning
-    const STALL_TIMEOUT_MS = 60 * 1000; // 1 minute without output = stalled
+    const SCAN_TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes max for scanning
+    const STALL_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes without output = stalled (SDF download can be slow)
 
     const makemkv = spawn("makemkvcon", ["-r", "info", "disc:0"]);
 
