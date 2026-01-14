@@ -843,9 +843,14 @@
             </label>
           </div>
 
-          <button class="btn" onclick="saveRipperSettings()">
-            Save Ripper Settings
-          </button>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn" onclick="saveRipperSettings()">
+              Save Ripper Settings
+            </button>
+            <button class="btn btn-secondary" onclick="resetToMovieMode()">
+              Reset to Movie Mode
+            </button>
+          </div>
           <div class="message" id="ripperMessage"></div>
         </div>
       </div>
@@ -2340,6 +2345,22 @@
         } catch (error) {
           console.error("Error loading ripper settings:", error);
         }
+      }
+
+      async function resetToMovieMode() {
+        // Set form values to movie defaults
+        document.getElementById("outputSubfolder").value = "";
+        document.getElementById("titlesToRip").value = 1;
+        document.getElementById("autoDetectEpisodes").checked = false;
+
+        // Save the settings
+        await saveRipperSettings();
+
+        showMessage(
+          "ripperMessage",
+          "Reset to Movie Mode: Folder cleared, titles set to 1, auto-detect disabled.",
+          "success"
+        );
       }
 
       async function saveRipperSettings() {
