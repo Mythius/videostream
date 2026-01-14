@@ -224,19 +224,18 @@ async function getDiscInfo() {
   return new Promise((resolve, reject) => {
     log("Scanning disc with MakeMKV...");
 
-    const SCAN_TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes max for scanning
-    const STALL_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes without output = stalled (SDF download can be slow)
+    const SCAN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes max for scanning (some discs take a long time)
 
     const makemkv = spawn("makemkvcon", ["-r", "info", "disc:0"]);
 
     let output = "";
-    let lastOutputTime = Date.now();
     let scanComplete = false;
 
-    // Timeout for entire scan
+    // Timeout for entire scan - MakeMKV can go silent for extended periods during disc analysis
+    // so we only use a total timeout, not a stall detector
     const scanTimeout = setTimeout(() => {
       if (!scanComplete) {
-        log("ERROR: MakeMKV disc scan timed out after 4 minutes");
+        log("ERROR: MakeMKV disc scan timed out after 10 minutes");
         makemkv.kill('SIGTERM');
         setTimeout(() => {
           if (!makemkv.killed) {
@@ -248,36 +247,13 @@ async function getDiscInfo() {
           "Disc Scan Timeout",
           "MakeMKV took too long to scan the disc. The disc may be unreadable or the drive may be busy."
         );
-        reject(new Error("MakeMKV scan timed out after 4 minutes"));
+        reject(new Error("MakeMKV scan timed out after 10 minutes"));
       }
     }, SCAN_TIMEOUT_MS);
-
-    // Stall detector - kill if no output for 1 minute
-    const stallCheck = setInterval(() => {
-      const timeSinceOutput = Date.now() - lastOutputTime;
-      if (timeSinceOutput > STALL_TIMEOUT_MS && !scanComplete) {
-        log(`ERROR: MakeMKV scan stalled - no output for ${Math.round(timeSinceOutput / 1000)} seconds`);
-        clearTimeout(scanTimeout);
-        clearInterval(stallCheck);
-        makemkv.kill('SIGTERM');
-        setTimeout(() => {
-          if (!makemkv.killed) {
-            makemkv.kill('SIGKILL');
-          }
-        }, 5000);
-        sendNotification(
-          "error",
-          "Disc Scan Stalled",
-          "MakeMKV stopped responding during disc scan. The disc may be unreadable."
-        );
-        reject(new Error("MakeMKV scan stalled - no output received"));
-      }
-    }, 10000); // Check every 10 seconds
 
     makemkv.stdout.on("data", (data) => {
       const text = data.toString();
       output += text;
-      lastOutputTime = Date.now();
 
       // Log progress messages from MakeMKV
       const msgMatch = text.match(/MSG:(\d+),\d+,\d+,"([^"]+)"/g);
@@ -299,14 +275,12 @@ async function getDiscInfo() {
 
     makemkv.stderr.on("data", (data) => {
       const text = data.toString();
-      lastOutputTime = Date.now();
       log(`MakeMKV stderr: ${text.trim()}`);
     });
 
     makemkv.on("error", (err) => {
       scanComplete = true;
       clearTimeout(scanTimeout);
-      clearInterval(stallCheck);
       log(`Failed to start makemkvcon: ${err.message}`);
       reject(err);
     });
@@ -314,7 +288,6 @@ async function getDiscInfo() {
     makemkv.on("close", (code) => {
       scanComplete = true;
       clearTimeout(scanTimeout);
-      clearInterval(stallCheck);
 
       if (code !== 0) {
         log(`MakeMKV scan exited with code ${code}`);
