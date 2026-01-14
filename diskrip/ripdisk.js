@@ -218,66 +218,153 @@ async function isDiscPresent() {
 
 /**
  * Get disc information using makemkvcon
+ * Uses spawn() to stream output incrementally instead of buffering
  */
 async function getDiscInfo() {
-  try {
+  return new Promise((resolve, reject) => {
     log("Scanning disc with MakeMKV...");
-    // Use 120 second timeout for disc scanning (some discs take a while)
-    const output = await execPromise(`makemkvcon -r info disc:0`, 60 * 1000 * 4);
 
-    // Extract disc name from output
-    const nameMatch = output.match(/CINFO:2,0,"([^"]+)"/);
-    const discName = nameMatch ? nameMatch[1] : `Disc_${Date.now()}`;
+    const SCAN_TIMEOUT_MS = 4 * 60 * 1000; // 4 minutes max for scanning
+    const STALL_TIMEOUT_MS = 60 * 1000; // 1 minute without output = stalled
 
-    // Parse all titles with their durations
-    const titles = [];
-    const titleRegex = /TINFO:(\d+),9,0,"(\d+):(\d+):(\d+)"/g;
-    let match;
+    const makemkv = spawn("makemkvcon", ["-r", "info", "disc:0"]);
 
-    while ((match = titleRegex.exec(output)) !== null) {
-      const titleIndex = parseInt(match[1]);
-      const hours = parseInt(match[2]);
-      const minutes = parseInt(match[3]);
-      const seconds = parseInt(match[4]);
-      const durationInSeconds = hours * 3600 + minutes * 60 + seconds;
+    let output = "";
+    let lastOutputTime = Date.now();
+    let scanComplete = false;
 
-      titles.push({
-        index: titleIndex,
-        duration: durationInSeconds,
-        durationFormatted: `${match[2]}:${match[3]}:${match[4]}`,
+    // Timeout for entire scan
+    const scanTimeout = setTimeout(() => {
+      if (!scanComplete) {
+        log("ERROR: MakeMKV disc scan timed out after 4 minutes");
+        makemkv.kill('SIGTERM');
+        setTimeout(() => {
+          if (!makemkv.killed) {
+            makemkv.kill('SIGKILL');
+          }
+        }, 5000);
+        sendNotification(
+          "error",
+          "Disc Scan Timeout",
+          "MakeMKV took too long to scan the disc. The disc may be unreadable or the drive may be busy."
+        );
+        reject(new Error("MakeMKV scan timed out after 4 minutes"));
+      }
+    }, SCAN_TIMEOUT_MS);
+
+    // Stall detector - kill if no output for 1 minute
+    const stallCheck = setInterval(() => {
+      const timeSinceOutput = Date.now() - lastOutputTime;
+      if (timeSinceOutput > STALL_TIMEOUT_MS && !scanComplete) {
+        log(`ERROR: MakeMKV scan stalled - no output for ${Math.round(timeSinceOutput / 1000)} seconds`);
+        clearTimeout(scanTimeout);
+        clearInterval(stallCheck);
+        makemkv.kill('SIGTERM');
+        setTimeout(() => {
+          if (!makemkv.killed) {
+            makemkv.kill('SIGKILL');
+          }
+        }, 5000);
+        sendNotification(
+          "error",
+          "Disc Scan Stalled",
+          "MakeMKV stopped responding during disc scan. The disc may be unreadable."
+        );
+        reject(new Error("MakeMKV scan stalled - no output received"));
+      }
+    }, 10000); // Check every 10 seconds
+
+    makemkv.stdout.on("data", (data) => {
+      const text = data.toString();
+      output += text;
+      lastOutputTime = Date.now();
+
+      // Log progress messages from MakeMKV
+      const msgMatch = text.match(/MSG:(\d+),\d+,\d+,"([^"]+)"/g);
+      if (msgMatch) {
+        msgMatch.forEach(msg => {
+          const innerMatch = msg.match(/MSG:\d+,\d+,\d+,"([^"]+)"/);
+          if (innerMatch) {
+            log(`MakeMKV: ${innerMatch[1]}`);
+          }
+        });
+      }
+
+      // Log when titles are found
+      const titleMatch = text.match(/TINFO:(\d+),2,0,"([^"]+)"/);
+      if (titleMatch) {
+        log(`Found title ${titleMatch[1]}: ${titleMatch[2]}`);
+      }
+    });
+
+    makemkv.stderr.on("data", (data) => {
+      const text = data.toString();
+      lastOutputTime = Date.now();
+      log(`MakeMKV stderr: ${text.trim()}`);
+    });
+
+    makemkv.on("error", (err) => {
+      scanComplete = true;
+      clearTimeout(scanTimeout);
+      clearInterval(stallCheck);
+      log(`Failed to start makemkvcon: ${err.message}`);
+      reject(err);
+    });
+
+    makemkv.on("close", (code) => {
+      scanComplete = true;
+      clearTimeout(scanTimeout);
+      clearInterval(stallCheck);
+
+      if (code !== 0) {
+        log(`MakeMKV scan exited with code ${code}`);
+        reject(new Error(`MakeMKV scan failed with exit code ${code}`));
+        return;
+      }
+
+      log("MakeMKV scan completed successfully");
+
+      // Extract disc name from output
+      const nameMatch = output.match(/CINFO:2,0,"([^"]+)"/);
+      const discName = nameMatch ? nameMatch[1] : `Disc_${Date.now()}`;
+
+      // Parse all titles with their durations
+      const titles = [];
+      const titleRegex = /TINFO:(\d+),9,0,"(\d+):(\d+):(\d+)"/g;
+      let match;
+
+      while ((match = titleRegex.exec(output)) !== null) {
+        const titleIndex = parseInt(match[1]);
+        const hours = parseInt(match[2]);
+        const minutes = parseInt(match[3]);
+        const seconds = parseInt(match[4]);
+        const durationInSeconds = hours * 3600 + minutes * 60 + seconds;
+
+        titles.push({
+          index: titleIndex,
+          duration: durationInSeconds,
+          durationFormatted: `${match[2]}:${match[3]}:${match[4]}`,
+        });
+      }
+
+      // Filter by minimum length first
+      const minLength = config.minTitleLength || 300;
+      const validTitles = titles.filter((t) => t.duration >= minLength);
+
+      // Sort by duration (longest first) to identify which titles to rip
+      // but we'll restore the natural order after selection
+      const sortedByDuration = [...validTitles].sort((a, b) => b.duration - a.duration);
+
+      log(`Disc scan found ${titles.length} total titles, ${validTitles.length} valid (>= ${minLength}s)`);
+
+      resolve({
+        name: sanitizeFilename(discName),
+        titles: validTitles, // Keep natural title order
+        titlesSortedByDuration: sortedByDuration, // Also provide sorted version for selection
+        titleCount: validTitles.length,
       });
-    }
-
-    // Filter by minimum length first
-    const minLength = config.minTitleLength || 300;
-    const validTitles = titles.filter((t) => t.duration >= minLength);
-
-    // Sort by duration (longest first) to identify which titles to rip
-    // but we'll restore the natural order after selection
-    const sortedByDuration = [...validTitles].sort((a, b) => b.duration - a.duration);
-
-    return {
-      name: sanitizeFilename(discName),
-      titles: validTitles, // Keep natural title order
-      titlesSortedByDuration: sortedByDuration, // Also provide sorted version for selection
-      titleCount: validTitles.length,
-    };
-  } catch (error) {
-    const errorMsg = error.message || error.stderr || error.toString();
-    log("Error getting disc info: " + errorMsg);
-
-    // Check if it was a timeout
-    if (errorMsg.includes('timed out')) {
-      log("MakeMKV scan timed out - disc may be unreadable or drive may be busy");
-      sendNotification(
-        "error",
-        "Disc Scan Timeout",
-        "MakeMKV took too long to scan the disc. The disc may be unreadable or the drive may be busy."
-      );
-    }
-
-    throw error;
-  }
+    });
+  });
 }
 
 /**
