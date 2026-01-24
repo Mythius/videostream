@@ -459,9 +459,12 @@ async function ripToMKV(discInfo) {
 
   return new Promise((resolve, reject) => {
     // Determine which titles to rip - select the N longest titles
-    const titlesToRip = config.titlesToRip || 1;
-    const longestTitles = discInfo.titlesSortedByDuration.slice(0, titlesToRip);
+    let titlesToRip = config.titlesToRip || 1;
+    if(config.autoDetectEpisodes) {
+      titlesToRip = Math.min(discInfo.titleCount, 12);
+    }
 
+    const longestTitles = discInfo.titlesSortedByDuration.slice(0, titlesToRip);
     // Re-sort selected titles by their original title index to preserve disc order
     const selectedTitles = longestTitles.sort((a, b) => a.index - b.index);
 
