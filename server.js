@@ -22,6 +22,55 @@ function getLocalIPv4() {
   return "localhost"; // Fallback
 }
 
+async function updateKey(){
+  try {
+    let req = await fetch("https://forum.makemkv.com/forum/viewtopic.php?t=1053");
+    let data = await req.text();
+    let match = data.match(/code>[^<]+</gi);
+    if (!match || match.length === 0) {
+      console.log("Could not find MakeMKV key on forum page");
+      return null;
+    }
+    let key = match[0].replace("code>", "").replace("<", "").trim();
+
+    // Determine the MakeMKV settings directory (use root if running as root, otherwise home)
+    const homeDir = process.getuid && process.getuid() === 0 ? "/root" : os.homedir();
+    const makemkvDir = path.join(homeDir, ".MakeMKV");
+    const settingsFile = path.join(makemkvDir, "settings.conf");
+
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(makemkvDir)) {
+      fs.mkdirSync(makemkvDir, { recursive: true });
+    }
+
+    // Read existing settings or start fresh
+    let settings = "";
+    if (fs.existsSync(settingsFile)) {
+      settings = fs.readFileSync(settingsFile, "utf8");
+    }
+
+    // Update or add the app_Key line
+    const keyLine = `app_Key = "${key}"`;
+    if (settings.includes("app_Key")) {
+      // Replace existing key
+      settings = settings.replace(/app_Key\s*=\s*"[^"]*"/, keyLine);
+    } else {
+      // Add new key
+      settings = settings.trim() + (settings ? "\n" : "") + keyLine + "\n";
+    }
+
+    // Write settings back
+    fs.writeFileSync(settingsFile, settings);
+    console.log(`MakeMKV key updated: ${key.substring(0, 10)}...`);
+    return key;
+  } catch (error) {
+    console.error("Failed to update MakeMKV key:", error.message);
+    return null;
+  }
+}
+
+updateKey().then(console.log).catch(console.error);
+
 // Read or create config.json
 const configPath = path.join(__dirname, "config.json");
 let config = {
