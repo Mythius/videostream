@@ -22,54 +22,88 @@ function getLocalIPv4() {
   return "localhost"; // Fallback
 }
 
-async function updateKey(){
+async function updateMakeMKV() {
+  const { exec } = require("child_process");
+
+  // Determine the MakeMKV settings directory (use root if running as root, otherwise home)
+  const homeDir = process.getuid && process.getuid() === 0 ? "/root" : os.homedir();
+  const makemkvDir = path.join(homeDir, ".MakeMKV");
+
+  // Create directory if it doesn't exist
+  if (!fs.existsSync(makemkvDir)) {
+    fs.mkdirSync(makemkvDir, { recursive: true });
+  }
+
+  // 1. Update the beta key
   try {
+    console.log("Fetching MakeMKV beta key...");
     let req = await fetch("https://forum.makemkv.com/forum/viewtopic.php?t=1053");
     let data = await req.text();
     let match = data.match(/code>[^<]+</gi);
-    if (!match || match.length === 0) {
-      console.log("Could not find MakeMKV key on forum page");
-      return null;
-    }
-    let key = match[0].replace("code>", "").replace("<", "").trim();
+    if (match && match.length > 0) {
+      let key = match[0].replace("code>", "").replace("<", "").trim();
 
-    // Determine the MakeMKV settings directory (use root if running as root, otherwise home)
-    const homeDir = process.getuid && process.getuid() === 0 ? "/root" : os.homedir();
-    const makemkvDir = path.join(homeDir, ".MakeMKV");
-    const settingsFile = path.join(makemkvDir, "settings.conf");
+      const settingsFile = path.join(makemkvDir, "settings.conf");
 
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(makemkvDir)) {
-      fs.mkdirSync(makemkvDir, { recursive: true });
-    }
+      // Read existing settings or start fresh
+      let settings = "";
+      if (fs.existsSync(settingsFile)) {
+        settings = fs.readFileSync(settingsFile, "utf8");
+      }
 
-    // Read existing settings or start fresh
-    let settings = "";
-    if (fs.existsSync(settingsFile)) {
-      settings = fs.readFileSync(settingsFile, "utf8");
-    }
+      // Update or add the app_Key line
+      const keyLine = `app_Key = "${key}"`;
+      if (settings.includes("app_Key")) {
+        settings = settings.replace(/app_Key\s*=\s*"[^"]*"/, keyLine);
+      } else {
+        settings = settings.trim() + (settings ? "\n" : "") + keyLine + "\n";
+      }
 
-    // Update or add the app_Key line
-    const keyLine = `app_Key = "${key}"`;
-    if (settings.includes("app_Key")) {
-      // Replace existing key
-      settings = settings.replace(/app_Key\s*=\s*"[^"]*"/, keyLine);
+      fs.writeFileSync(settingsFile, settings);
+      console.log(`MakeMKV key updated: ${key.substring(0, 10)}...`);
     } else {
-      // Add new key
-      settings = settings.trim() + (settings ? "\n" : "") + keyLine + "\n";
+      console.log("Could not find MakeMKV key on forum page");
     }
-
-    // Write settings back
-    fs.writeFileSync(settingsFile, settings);
-    console.log(`MakeMKV key updated: ${key.substring(0, 10)}...`);
-    return key;
   } catch (error) {
     console.error("Failed to update MakeMKV key:", error.message);
-    return null;
+  }
+
+  // 2. Download the latest SDF bin
+  try {
+    console.log("Downloading MakeMKV SDF bin...");
+    const sdfUrl = "https://www.makemkv.com/svq/sdf.bin";
+    const sdfPath = path.join(makemkvDir, "sdf.bin");
+
+    const sdfReq = await fetch(sdfUrl);
+    if (sdfReq.ok) {
+      const sdfBuffer = Buffer.from(await sdfReq.arrayBuffer());
+      fs.writeFileSync(sdfPath, sdfBuffer);
+      console.log(`MakeMKV SDF bin updated (${sdfBuffer.length} bytes)`);
+    } else {
+      console.log(`Failed to download SDF bin: HTTP ${sdfReq.status}`);
+    }
+  } catch (error) {
+    console.error("Failed to download SDF bin:", error.message);
+  }
+
+  // 3. Restart ripdisk.service (only on Linux)
+  if (process.platform === "linux") {
+    try {
+      console.log("Restarting ripdisk.service...");
+      exec("systemctl restart ripdisk.service", (error) => {
+        if (error) {
+          console.error("Failed to restart ripdisk.service:", error.message);
+        } else {
+          console.log("ripdisk.service restarted successfully");
+        }
+      });
+    } catch (error) {
+      console.error("Failed to restart ripdisk.service:", error.message);
+    }
   }
 }
 
-updateKey().then(console.log).catch(console.error);
+updateMakeMKV().catch(console.error);
 
 // Read or create config.json
 const configPath = path.join(__dirname, "config.json");
