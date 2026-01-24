@@ -13,7 +13,7 @@ fi
 
 # Use jq to remove the url field if jq is available
 if command -v jq &> /dev/null; then
-    jq 'del(.url)' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
+    jq 'del(.url)' "$CONFIG_FILE" > "${CONFIG_FILE}.tmp" && mv -f "${CONFIG_FILE}.tmp" "$CONFIG_FILE"
     echo "URL cleared from config.json using jq"
 else
     # Fallback: use node to modify the JSON
