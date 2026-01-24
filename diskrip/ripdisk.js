@@ -30,11 +30,8 @@ try {
 // Global state
 let isRipping = false;
 let checkInterval = null;
-let lastRippedDisc = null; // Track recently ripped disc to avoid immediate re-rip
-let lastRipTime = 0;
 let lastDiscPresent = false; // Track whether a disc was present in last check
 let waitingForDiscRemoval = false; // True after ejection, waiting for disc to be removed
-const RIP_COOLDOWN_MS = 30000; // Wait 30 seconds after ejection before detecting again
 const CHECK_INTERVAL_MS = 60000; // Check every 60 seconds (1 minute)
 
 /**
@@ -1096,14 +1093,6 @@ async function ripDisc() {
       log(`Error fetching thumbnails: ${error.message}`);
     }
 
-    // Track this rip to avoid immediate re-rip
-    lastRippedDisc = discInfo.name;
-    lastRipTime = Date.now();
-    log(
-      `Cooldown started (${
-        RIP_COOLDOWN_MS / 1000
-      }s) to prevent re-ripping the same disc`
-    );
   } catch (error) {
     log("Error during ripping process: " + (error.message || error));
     log("Stack trace: " + (error.stack || "No stack trace available"));
@@ -1130,10 +1119,6 @@ async function ripDisc() {
       }
     }
 
-    // Reset cooldown on error so we can try again with a different disc
-    log("Resetting cooldown due to error - ready to detect new discs");
-    lastRippedDisc = null;
-    lastRipTime = 0;
   } finally {
     isRipping = false;
   }
@@ -1145,7 +1130,6 @@ async function ripDisc() {
  * This function implements smart disc detection:
  * - After ejecting a disc, waits for it to be physically removed before detecting new discs
  * - Only logs/acts when disc state changes (prevents spam in logs)
- * - Respects cooldown period to avoid re-ripping the same disc
  */
 async function checkForDisc() {
   if (isRipping) {
@@ -1160,7 +1144,6 @@ async function checkForDisc() {
       if (!discPresent && lastDiscPresent) {
         log("✓ Disc removed, ready to detect new discs");
         waitingForDiscRemoval = false;
-        lastRippedDisc = null;
       } else if (discPresent) {
         // Disc still present, keep waiting silently (no log spam)
         lastDiscPresent = discPresent;
@@ -1171,25 +1154,6 @@ async function checkForDisc() {
     // Update disc presence state
     const discStateChanged = discPresent !== lastDiscPresent;
     lastDiscPresent = discPresent;
-
-    // Skip detection during cooldown period after a successful rip
-    if (lastRippedDisc && Date.now() - lastRipTime < RIP_COOLDOWN_MS) {
-      const timeLeft = Math.ceil(
-        (RIP_COOLDOWN_MS - (Date.now() - lastRipTime)) / 1000
-      );
-      if (discStateChanged && discPresent) {
-        log(
-          `Disc detected but still in cooldown for "${lastRippedDisc}" (${timeLeft}s remaining)`
-        );
-      }
-      return;
-    }
-
-    // Clear cooldown state if cooldown has expired
-    if (lastRippedDisc && Date.now() - lastRipTime >= RIP_COOLDOWN_MS) {
-      log(`Cooldown expired for "${lastRippedDisc}"; resuming detection`);
-      lastRippedDisc = null;
-    }
 
     // Only log and rip when a disc is newly detected (state change)
     if (discPresent && discStateChanged) {
