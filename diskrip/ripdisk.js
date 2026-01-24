@@ -229,22 +229,42 @@ async function getDiscInfo() {
       const text = data.toString();
       output += text;
 
-      // Log progress messages from MakeMKV
-      const msgMatch = text.match(/MSG:(\d+),\d+,\d+,"([^"]+)"/g);
-      if (msgMatch) {
-        msgMatch.forEach(msg => {
-          const innerMatch = msg.match(/MSG:\d+,\d+,\d+,"([^"]+)"/);
-          if (innerMatch) {
-            log(`MakeMKV: ${innerMatch[1]}`);
-          }
-        });
-      }
+      // Log all raw output lines for debugging
+      const lines = text.split('\n').filter(line => line.trim());
+      lines.forEach(line => {
+        // Log MSG messages (status messages)
+        const msgMatch = line.match(/MSG:(\d+),\d+,\d+,"([^"]+)"/);
+        if (msgMatch) {
+          log(`MakeMKV: ${msgMatch[2]}`);
+          return;
+        }
 
-      // Log when titles are found
-      const titleMatch = text.match(/TINFO:(\d+),2,0,"([^"]+)"/);
-      if (titleMatch) {
-        log(`Found title ${titleMatch[1]}: ${titleMatch[2]}`);
-      }
+        // Log when titles are found
+        const titleMatch = line.match(/TINFO:(\d+),2,0,"([^"]+)"/);
+        if (titleMatch) {
+          log(`Found title ${titleMatch[1]}: ${titleMatch[2]}`);
+          return;
+        }
+
+        // Log PRGT (progress title) messages
+        const prgtMatch = line.match(/PRGT:\d+,\d+,"([^"]+)"/);
+        if (prgtMatch) {
+          log(`MakeMKV progress: ${prgtMatch[1]}`);
+          return;
+        }
+
+        // Log DRV (drive info) messages
+        const drvMatch = line.match(/DRV:\d+,\d+,\d+,\d+,"([^"]*)","([^"]*)"/);
+        if (drvMatch && drvMatch[2]) {
+          log(`MakeMKV drive: ${drvMatch[2]}`);
+          return;
+        }
+
+        // Log any unrecognized output for debugging (but skip empty CINFO/TINFO/SINFO lines)
+        if (!line.match(/^[A-Z]+:\d+/) && line.trim()) {
+          log(`MakeMKV raw: ${line.trim()}`);
+        }
+      });
     });
 
     makemkv.stderr.on("data", (data) => {

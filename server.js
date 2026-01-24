@@ -23,8 +23,6 @@ function getLocalIPv4() {
 }
 
 async function updateMakeMKV() {
-  const { exec } = require("child_process");
-
   // Determine the MakeMKV settings directory (use root if running as root, otherwise home)
   const homeDir = process.getuid && process.getuid() === 0 ? "/root" : os.homedir();
   const makemkvDir = path.join(homeDir, ".MakeMKV");
@@ -86,21 +84,6 @@ async function updateMakeMKV() {
     console.error("Failed to download SDF bin:", error.message);
   }
 
-  // 3. Restart ripdisk.service (only on Linux)
-  if (process.platform === "linux") {
-    try {
-      console.log("Restarting ripdisk.service...");
-      exec("systemctl restart ripdisk.service", (error) => {
-        if (error) {
-          console.error("Failed to restart ripdisk.service:", error.message);
-        } else {
-          console.log("ripdisk.service restarted successfully");
-        }
-      });
-    } catch (error) {
-      console.error("Failed to restart ripdisk.service:", error.message);
-    }
-  }
 }
 
 updateMakeMKV().catch(console.error);
