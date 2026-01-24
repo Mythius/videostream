@@ -190,7 +190,7 @@ async function isDiscPresent() {
       const out = await execPromise(`file -s ${device}`);
       log(`file -s: ${out.split("\n")[0] || ""}`);
       // If output contains common fs type or ISO9660, treat as present
-      if (/ISO 9660|ISO9660|filesystem|FAT|NTFS|ext[234]/i.test(out)) {
+      if (/ISO 9660|UDF|ISO9660|filesystem|FAT|NTFS|ext[234]/i.test(out)) {
         return true;
       }
     } catch (e) {
