@@ -35,6 +35,18 @@ let waitingForDiscRemoval = false; // True after ejection, waiting for disc to b
 const CHECK_INTERVAL_MS = 60000; // Check every 60 seconds (1 minute)
 
 /**
+ * Reset all state to prepare for ripping the next disc
+ * This ensures clean state between rips when the script runs continuously
+ */
+function resetStateForNextDisc() {
+  log("Resetting state for next disc...");
+  isRipping = false;
+  // waitingForDiscRemoval stays true after eject - this is correct
+  // It will be reset to false by checkForDisc() when disc is removed
+  log(`State after reset: isRipping=${isRipping}, lastDiscPresent=${lastDiscPresent}, waitingForDiscRemoval=${waitingForDiscRemoval}`);
+}
+
+/**
  * Log message with timestamp
  */
 function log(message) {
@@ -51,7 +63,17 @@ function reloadConfig() {
     const rootConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
     config = rootConfig.diskrip;
     outputFolder = rootConfig.videoDirectory;
+
+    // Re-expand and resolve paths (in case config has ~ in paths)
+    if (config.tempFolder) {
+      config.tempFolder = path.resolve(expandPath(config.tempFolder));
+    }
+    if (outputFolder) {
+      outputFolder = path.resolve(expandPath(outputFolder));
+    }
+
     log("Configuration reloaded from config.json");
+    log(`Paths: tempFolder=${config.tempFolder}, outputFolder=${outputFolder}`);
     return true;
   } catch (error) {
     log(`Warning: Failed to reload config: ${error.message}`);
@@ -1116,6 +1138,9 @@ async function ripDisc() {
       log(`Error fetching thumbnails: ${error.message}`);
     }
 
+    // Reset state for next disc (called on successful completion)
+    resetStateForNextDisc();
+
   } catch (error) {
     log("Error during ripping process: " + (error.message || error));
     log("Stack trace: " + (error.stack || "No stack trace available"));
@@ -1142,8 +1167,13 @@ async function ripDisc() {
       }
     }
 
+    // Reset state after error so next disc can be processed
+    resetStateForNextDisc();
+
   } finally {
+    // Ensure isRipping is always reset even if resetStateForNextDisc wasn't called
     isRipping = false;
+    log(`Final state: isRipping=${isRipping}, lastDiscPresent=${lastDiscPresent}, waitingForDiscRemoval=${waitingForDiscRemoval}`);
   }
 }
 
@@ -1164,12 +1194,15 @@ async function checkForDisc() {
 
     // If we're waiting for disc removal, check if disc has been removed
     if (waitingForDiscRemoval) {
-      if (!discPresent && lastDiscPresent) {
+      if (!discPresent) {
+        // Disc has been removed - reset state for next disc
         log("✓ Disc removed, ready to detect new discs");
         waitingForDiscRemoval = false;
-      } else if (discPresent) {
+        lastDiscPresent = false; // Explicitly reset so next disc insertion is detected as a change
+        log(`State reset: lastDiscPresent=${lastDiscPresent}, waitingForDiscRemoval=${waitingForDiscRemoval}`);
+        return; // Exit early, will detect new disc on next check cycle
+      } else {
         // Disc still present, keep waiting silently (no log spam)
-        lastDiscPresent = discPresent;
         return;
       }
     }
@@ -1181,6 +1214,7 @@ async function checkForDisc() {
     // Only log and rip when a disc is newly detected (state change)
     if (discPresent && discStateChanged) {
       log("Disc detected in drive!");
+      log(`State before rip: isRipping=${isRipping}, lastDiscPresent=${lastDiscPresent}, waitingForDiscRemoval=${waitingForDiscRemoval}`);
       sendNotification("info","Disc Detected", "A new disc has been detected in the drive.");
       // Reload config to pick up any changes made in settings
       reloadConfig();
