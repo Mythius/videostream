@@ -929,10 +929,26 @@
           </div>
 
           <div class="instructions">
-            <h3>Step 2: Find Your Roku Device</h3>
+            <h3>Step 2: Download or Deploy the App</h3>
+            <p style="margin-bottom: 15px">
+              Download the Roku app package to sideload manually, or use the
+              auto-deploy option below to install it directly from this page.
+            </p>
+          </div>
+
+          <div class="form-group">
+            <button class="btn" onclick="downloadRokuApp()">
+              <span id="downloadRokuBtnText">⬇️ Download Roku App</span>
+            </button>
+          </div>
+
+          <div class="message" id="downloadRokuMessage"></div>
+
+          <div class="instructions" style="margin-top: 30px;">
+            <h3>Step 3: Auto-Deploy to Your Roku</h3>
             <p style="margin-bottom: 15px">
               Click the button below to automatically find Roku devices on your
-              network.
+              network and deploy directly.
             </p>
           </div>
 
@@ -985,6 +1001,48 @@
         // Start notification refresh if entering notifications tab
         if (tabName === "notifications") {
           startNotificationRefresh();
+        }
+      }
+
+      // Download Roku app as a zip
+      async function downloadRokuApp() {
+        const btn = document.getElementById("downloadRokuBtnText");
+        btn.innerHTML = '<span class="spinner"></span>Building...';
+        try {
+          const response = await fetch("/api/roku/build", {
+            credentials: "include",
+          });
+
+          if (response.status === 401) {
+            window.location.href =
+              "/login?next=" + encodeURIComponent("/settings.html");
+            return;
+          }
+
+          if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || "Build failed");
+          }
+
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "matthiastv-roku.zip";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          showMessage("downloadRokuMessage", "✅ Download started!", "success");
+        } catch (error) {
+          showMessage(
+            "downloadRokuMessage",
+            "Error building app: " + error.message,
+            "error"
+          );
+        } finally {
+          btn.textContent = "⬇️ Download Roku App";
         }
       }
 

@@ -1819,6 +1819,24 @@ app.post("/api/roku/deploy", requireAuth, express.json(), async (req, res) => {
   }
 });
 
+// API: Build Roku app and return as a downloadable zip
+app.get("/api/roku/build", requireAuth, async (_req, res) => {
+  let zipPath = null;
+  try {
+    zipPath = await buildRokuApp();
+    res.download(zipPath, "matthiastv-roku.zip", (err) => {
+      if (zipPath && fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+      if (err && !res.headersSent) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+  } catch (error) {
+    if (zipPath && fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+    console.error("Error building Roku app:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Function to scan for Roku devices using multiple methods
 async function scanForRokuDevices() {
   const devices = [];
@@ -1986,151 +2004,113 @@ async function scanForRokuDevices() {
   return devices;
 }
 
-// Function to build and deploy Roku app
-async function buildAndDeployRokuApp(rokuIp, username, password) {
+// Build the Roku app zip with the current server URL baked in.
+// Resolves with the path to the created zip file.
+async function buildRokuApp() {
   return new Promise((resolve, reject) => {
     const archiver = require("archiver");
+    const zipPath = path.join(__dirname, `rokuapp-${Date.now()}.zip`);
 
-    // Create zip of rokuapp directory
-    const zipPath = path.join(__dirname, "rokuapp.zip");
+    // Read MainScene.brs and replace URL with current config value
+    const mainScenePath = path.join(__dirname, "rokuapp", "components", "MainScene.brs");
+    let mainSceneContent = fs.readFileSync(mainScenePath, "utf8");
+    mainSceneContent = mainSceneContent.replace(/URL = ".*?"/, `URL = "${config.url}"`);
+
+    const tempMainScenePath = path.join(__dirname, "MainScene.brs.tmp");
+    fs.writeFileSync(tempMainScenePath, mainSceneContent);
+
     const output = fs.createWriteStream(zipPath);
     const archive = archiver("zip", { zlib: { level: 9 } });
 
     output.on("close", () => {
+      if (fs.existsSync(tempMainScenePath)) fs.unlinkSync(tempMainScenePath);
       console.log(`Roku app package created: ${archive.pointer()} bytes`);
-
-      // Update MainScene.brs with current URL before deploying
-      const mainScenePath = path.join(
-        __dirname,
-        "rokuapp",
-        "components",
-        "MainScene.brs"
-      );
-      let mainSceneContent = fs.readFileSync(mainScenePath, "utf8");
-
-      // Replace URL in the config section
-      mainSceneContent = mainSceneContent.replace(
-        /URL = ".*?"/,
-        `URL = "${config.url}"`
-      );
-
-      // Write to temp location
-      const tempMainScenePath = path.join(__dirname, "MainScene.brs.tmp");
-      fs.writeFileSync(tempMainScenePath, mainSceneContent);
-
-      // Recreate zip with updated file
-      const output2 = fs.createWriteStream(zipPath);
-      const archive2 = archiver("zip", { zlib: { level: 9 } });
-
-      output2.on("close", async () => {
-        // Deploy to Roku using curl (handles Digest auth automatically)
-        const { spawn } = require("child_process");
-
-        const curlArgs = [
-          "--digest",
-          "-u",
-          `${username}:${password}`,
-          "-F",
-          "mysubmit=Replace",
-          "-F",
-          `archive=@${zipPath}`,
-          "-w",
-          "\n%{http_code}",  // Write HTTP status code at the end
-          `http://${rokuIp}/plugin_install`,
-        ];
-
-        const curl = spawn("curl", curlArgs);
-        let output = "";
-        let errorOutput = "";
-
-        curl.stdout.on("data", (data) => {
-          output += data.toString();
-        });
-
-        curl.stderr.on("data", (data) => {
-          errorOutput += data.toString();
-        });
-
-        curl.on("close", (code) => {
-          // Clean up
-          if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
-          if (fs.existsSync(tempMainScenePath))
-            fs.unlinkSync(tempMainScenePath);
-
-          // Extract HTTP status code from output
-          const lines = output.trim().split('\n');
-          const httpCode = lines[lines.length - 1];
-          const responseBody = lines.slice(0, -1).join('\n');
-
-          console.log(`Roku deployment HTTP status: ${httpCode}`);
-          console.log("Response body:", responseBody);
-
-          if (code === 0 && httpCode === "200") {
-            console.log("Roku app deployed successfully");
-            resolve();
-          } else if (httpCode === "401") {
-            reject(new Error("Authentication failed. Please check your developer password."));
-          } else if (code !== 0) {
-            console.error("curl stderr:", errorOutput);
-            reject(
-              new Error(
-                `Deployment failed with exit code ${code}: ${errorOutput}`
-              )
-            );
-          } else {
-            reject(new Error(`Deployment failed with HTTP status ${httpCode}. Response: ${responseBody}`));
-          }
-        });
-
-        curl.on("error", (error) => {
-          // Clean up on error
-          if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
-          if (fs.existsSync(tempMainScenePath))
-            fs.unlinkSync(tempMainScenePath);
-          reject(new Error(`Failed to execute curl: ${error.message}`));
-        });
-      });
-
-      archive2.on("error", (err) => {
-        reject(err);
-      });
-
-      archive2.pipe(output2);
-
-      // Add all roku app files with updated MainScene.brs
-      archive2.directory(
-        path.join(__dirname, "rokuapp", "components"),
-        "components",
-        {
-          ignore: ["MainScene.brs"],
-        }
-      );
-      archive2.file(tempMainScenePath, { name: "components/MainScene.brs" });
-      archive2.directory(path.join(__dirname, "rokuapp", "source"), "source");
-
-      // Add images directory (contains app icons)
-      const imagesDir = path.join(__dirname, "rokuapp", "images");
-      if (fs.existsSync(imagesDir)) {
-        archive2.directory(imagesDir, "images");
-      }
-
-      // Add manifest
-      const manifestPath = path.join(__dirname, "rokuapp", "manifest");
-      if (fs.existsSync(manifestPath)) {
-        archive2.file(manifestPath, { name: "manifest" });
-      }
-
-      archive2.finalize();
+      resolve(zipPath);
     });
 
     archive.on("error", (err) => {
+      if (fs.existsSync(tempMainScenePath)) fs.unlinkSync(tempMainScenePath);
       reject(err);
     });
 
     archive.pipe(output);
-    archive.directory(path.join(__dirname, "rokuapp"), false);
+
+    // Add components with updated MainScene.brs
+    archive.directory(path.join(__dirname, "rokuapp", "components"), "components", {
+      ignore: ["MainScene.brs"],
+    });
+    archive.file(tempMainScenePath, { name: "components/MainScene.brs" });
+    archive.directory(path.join(__dirname, "rokuapp", "source"), "source");
+
+    const imagesDir = path.join(__dirname, "rokuapp", "images");
+    if (fs.existsSync(imagesDir)) {
+      archive.directory(imagesDir, "images");
+    }
+
+    const manifestPath = path.join(__dirname, "rokuapp", "manifest");
+    if (fs.existsSync(manifestPath)) {
+      archive.file(manifestPath, { name: "manifest" });
+    }
+
     archive.finalize();
   });
+}
+
+// Deploy a pre-built Roku app zip to a device. Cleans up the zip when done.
+async function deployRokuApp(zipPath, rokuIp, username, password) {
+  return new Promise((resolve, reject) => {
+    const { spawn } = require("child_process");
+
+    const curlArgs = [
+      "--digest",
+      "-u", `${username}:${password}`,
+      "-F", "mysubmit=Replace",
+      "-F", `archive=@${zipPath}`,
+      "-w", "\n%{http_code}",
+      `http://${rokuIp}/plugin_install`,
+    ];
+
+    const curl = spawn("curl", curlArgs);
+    let output = "";
+    let errorOutput = "";
+
+    curl.stdout.on("data", (data) => { output += data.toString(); });
+    curl.stderr.on("data", (data) => { errorOutput += data.toString(); });
+
+    curl.on("close", (code) => {
+      if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+
+      const lines = output.trim().split("\n");
+      const httpCode = lines[lines.length - 1];
+      const responseBody = lines.slice(0, -1).join("\n");
+
+      console.log(`Roku deployment HTTP status: ${httpCode}`);
+      console.log("Response body:", responseBody);
+
+      if (code === 0 && httpCode === "200") {
+        console.log("Roku app deployed successfully");
+        resolve();
+      } else if (httpCode === "401") {
+        reject(new Error("Authentication failed. Please check your developer password."));
+      } else if (code !== 0) {
+        console.error("curl stderr:", errorOutput);
+        reject(new Error(`Deployment failed with exit code ${code}: ${errorOutput}`));
+      } else {
+        reject(new Error(`Deployment failed with HTTP status ${httpCode}. Response: ${responseBody}`));
+      }
+    });
+
+    curl.on("error", (error) => {
+      if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
+      reject(new Error(`Failed to execute curl: ${error.message}`));
+    });
+  });
+}
+
+// Convenience wrapper: build then deploy in sequence
+async function buildAndDeployRokuApp(rokuIp, username, password) {
+  const zipPath = await buildRokuApp();
+  await deployRokuApp(zipPath, rokuIp, username, password);
 }
 
 http.listen(port, () => {
