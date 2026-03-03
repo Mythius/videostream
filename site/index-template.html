@@ -94,15 +94,7 @@
             background-color: rgba(255, 255, 255, 0.12);
         }
 
-        .search-count {
-            font-size: 0.8em;
-            color: rgba(255, 255, 255, 0.45);
-            margin-top: 5px;
-            text-align: center;
-            min-height: 1.2em;
-        }
-
-        @media (max-width: 800px) {
+@media (max-width: 800px) {
             .search-wrapper {
                 flex: 1 1 100%;
                 margin: 10px 0 0;
@@ -245,7 +237,6 @@
                 oninput="handleSearch(this.value)"
                 autocomplete="off"
             >
-            <div class="search-count" id="searchCount"></div>
         </div>
         <a href="/settings.html" class="settings-btn" id="settingsBtn" style="display: none;">⚙️ Settings</a>
     </div>
@@ -339,11 +330,8 @@
         function handleSearch(query) {
             searchQuery = query.trim().toLowerCase();
             const grid = document.getElementById('moviesGrid');
-            const countEl = document.getElementById('searchCount');
 
             if (!searchQuery) {
-                // Restore normal view
-                countEl.textContent = '';
                 grid.innerHTML = '';
                 if (enableInfiniteScroll) {
                     currentIndex = 0;
@@ -357,10 +345,6 @@
             const results = moviesData.filter(m =>
                 m.title.toLowerCase().includes(searchQuery)
             );
-
-            countEl.textContent = results.length === 0
-                ? 'No results'
-                : `${results.length} result${results.length === 1 ? '' : 's'}`;
 
             if (results.length === 0) {
                 grid.innerHTML = `
