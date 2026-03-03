@@ -21,7 +21,7 @@
         .header {
             background: rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(10px);
-            padding: 20px 40px;
+            padding: 12px 40px;
             position: sticky;
             top: 0;
             z-index: 100;
@@ -29,19 +29,6 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            transition: all 0.3s ease;
-        }
-
-        .header.collapsed {
-            padding: 10px 40px;
-        }
-
-        .header.collapsed h1 {
-            font-size: 1.8em;
-        }
-
-        .header.collapsed p {
-            display: none;
         }
 
         .header-left {
@@ -49,18 +36,15 @@
         }
 
         .header h1 {
-            font-size: 2.5em;
+            font-size: 1.8em;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            transition: font-size 0.3s ease;
         }
 
         .header p {
-            color: rgba(255, 255, 255, 0.7);
-            margin-top: 5px;
-            transition: opacity 0.3s ease;
+            display: none;
         }
 
         .settings-btn {
@@ -79,6 +63,54 @@
         .settings-btn:hover {
             background: rgba(102, 126, 234, 0.4);
             border-color: rgba(102, 126, 234, 0.6);
+        }
+
+        .search-wrapper {
+            flex: 0 1 420px;
+            margin: 0 24px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 10px 18px 10px 42px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            color: white;
+            font-size: 1em;
+            outline: none;
+            transition: border-color 0.2s ease, background 0.2s ease;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: 14px center;
+        }
+
+        .search-input::placeholder {
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        .search-input:focus {
+            border-color: rgba(102, 126, 234, 0.6);
+            background-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .search-count {
+            font-size: 0.8em;
+            color: rgba(255, 255, 255, 0.45);
+            margin-top: 5px;
+            text-align: center;
+            min-height: 1.2em;
+        }
+
+        @media (max-width: 800px) {
+            .search-wrapper {
+                flex: 1 1 100%;
+                margin: 10px 0 0;
+                order: 3;
+            }
+            .header {
+                flex-wrap: wrap;
+            }
         }
 
         .container {
@@ -204,6 +236,17 @@
             <h1>🎬 __SERVICE_NAME__</h1>
             <p>Browse and stream your favorite movies</p>
         </div>
+        <div class="search-wrapper">
+            <input
+                type="search"
+                id="searchInput"
+                class="search-input"
+                placeholder="Search movies..."
+                oninput="handleSearch(this.value)"
+                autocomplete="off"
+            >
+            <div class="search-count" id="searchCount"></div>
+        </div>
         <a href="/settings.html" class="settings-btn" id="settingsBtn" style="display: none;">⚙️ Settings</a>
     </div>
 
@@ -257,23 +300,8 @@
             }
         }
 
-        let lastScroll = 0;
-
         function handleScroll() {
-            // Handle collapsing banner
-            const header = document.getElementById('header');
-            const currentScroll = window.scrollY;
-
-            if (currentScroll > 100) {
-                header.classList.add('collapsed');
-            } else {
-                header.classList.remove('collapsed');
-            }
-
-            lastScroll = currentScroll;
-
-            // Handle infinite scroll
-            if (!enableInfiniteScroll) return;
+            if (!enableInfiniteScroll || searchQuery) return;
 
             const scrollPosition = window.innerHeight + window.scrollY;
             const threshold = document.documentElement.scrollHeight - 500;
@@ -289,8 +317,6 @@
             }
         }
 
-        // Initialize
-        // Always listen to scroll for banner collapse
         window.addEventListener('scroll', handleScroll);
 
         if (enableInfiniteScroll) {
@@ -305,6 +331,47 @@
                     <p>Add some videos to your library to get started</p>
                 </div>
             `;
+        }
+
+        // Search
+        let searchQuery = '';
+
+        function handleSearch(query) {
+            searchQuery = query.trim().toLowerCase();
+            const grid = document.getElementById('moviesGrid');
+            const countEl = document.getElementById('searchCount');
+
+            if (!searchQuery) {
+                // Restore normal view
+                countEl.textContent = '';
+                grid.innerHTML = '';
+                if (enableInfiniteScroll) {
+                    currentIndex = 0;
+                    loadMoreMovies();
+                } else {
+                    grid.innerHTML = moviesData.map(createMovieCard).join('');
+                }
+                return;
+            }
+
+            const results = moviesData.filter(m =>
+                m.title.toLowerCase().includes(searchQuery)
+            );
+
+            countEl.textContent = results.length === 0
+                ? 'No results'
+                : `${results.length} result${results.length === 1 ? '' : 's'}`;
+
+            if (results.length === 0) {
+                grid.innerHTML = `
+                    <div class="no-movies" style="grid-column: 1 / -1;">
+                        <h2>No Results</h2>
+                        <p>No movies matched "<em>${query}</em>"</p>
+                    </div>
+                `;
+            } else {
+                grid.innerHTML = results.map(createMovieCard).join('');
+            }
         }
     </script>
 </body>
