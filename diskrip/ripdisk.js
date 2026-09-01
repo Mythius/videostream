@@ -758,27 +758,18 @@ async function convertToMP4(
 
     // Build ffmpeg arguments
     const ffmpegArgs = [
-      "-i",
-      mkvFile,
-      "-c:v",
-      config.mp4Settings.videoCodec,
-      "-preset",
-      config.mp4Settings.preset,
-      "-crf",
-      config.mp4Settings.crf.toString(),
-      "-c:a",
-      config.mp4Settings.audioCodec,
-      "-b:a",
-      "192k",
-      "-profile:a",
-      "aac_low", // Use AAC-LC profile for maximum compatibility with iOS/Safari
-      "-ar",
-      "48000", // Ensure 48kHz sample rate for compatibility
-      "-movflags",
-      "+faststart",
-      "-y", // Overwrite output file if it exists
-      mp4File,
+       "-i", mkvFile,
+       "-c:v", "copy",
+       "-c:a", "aac",
+       "-b:a", "192k",
+       "-profile:a", "aac_low",
+       "-ar", "48000",
+       "-movflags", "+faststart",
+       "-y",
+       mp4File
     ];
+
+
 
     log(`Executing: ffmpeg ${ffmpegArgs.join(" ")}`);
 
