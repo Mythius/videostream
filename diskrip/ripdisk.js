@@ -757,19 +757,25 @@ async function convertToMP4(
     log(`Output file: ${mp4File}`);
 
     // Build ffmpeg arguments
-    const ffmpegArgs = [
-       "-i", mkvFile,
-       "-c:v", "copy",
-       "-c:a", "aac",
-       "-b:a", "192k",
-       "-profile:a", "aac_low",
-       "-ar", "48000",
-       "-movflags", "+faststart",
-       "-y",
-       mp4File
-    ];
-
-
+const ffmpegArgs = [
+   "-i", mkvFile,
+   "-map", "0:v:0?",       // Explicitly select the first video stream (if it exists)
+   "-map", "0:a:0?",       // Only the first/default audio track — browsers can't switch
+                            // between multiple audio tracks in a <video> element anyway
+   "-vf", "bwdif",          // deinterlace (source is interlaced NTSC DVD, field_order=tt)
+   "-c:v", "libx264",       // browsers can't decode mpeg2video in an mp4 container
+   "-preset", "slow",
+   "-crf", "18",
+   "-pix_fmt", "yuv420p",
+   "-c:a", "aac",
+   "-b:a", "192k",
+   "-ac", "2",              // downmix to stereo for broad device/browser compatibility
+   "-profile:a", "aac_low",
+   "-ar", "48000",
+   "-movflags", "+faststart",
+   "-y",
+   mp4File
+];
 
     log(`Executing: ffmpeg ${ffmpegArgs.join(" ")}`);
 
